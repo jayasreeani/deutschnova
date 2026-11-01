@@ -1,0 +1,357 @@
+// Prisma Schema for DeutschCareer AI
+// Configured with SQLite for instantaneous local zero-config testing
+// For PostgreSQL production deployment, see prisma/schema.postgresql.prisma
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  passwordHash  String
+  role          String         @default("LEARNER") // LEARNER | ADMIN
+  avatarUrl     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  profile          UserProfile?
+  learningGoals    LearningGoal[]
+  quizResults      QuizResult[]
+  progress         Progress?
+  userAchievements UserAchievement[]
+  activities       UserActivity[]
+  savedVocabulary  UserSavedVocabulary[]
+  chatSessions     ChatSession[]
+}
+
+model UserProfile {
+  id              String      @id @default(uuid())
+  userId          String      @unique
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  country         String?
+  nativeLanguage  String?
+  learningGoal    String?     // e.g. "Job Opportunities", "Goethe Certification", "IT Professional German"
+  currentLevel    String      @default("BEGINNER") // BEGINNER, ELEMENTARY, INTERMEDIATE, ADVANCED
+  dailyMinutes    Int         @default(15)
+  onboardingDone  Boolean     @default(false)
+  careerField     String?     // e.g. "Software Engineering", "Product Management", "Finance"
+  targetExam      String?     // e.g. "Goethe B2", "TestDaF"
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model LearningGoal {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  category      String
+  targetLevel   String
+  targetDate    DateTime?
+  completed     Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+}
+
+model Lesson {
+  id                    String      @id @default(uuid())
+  title                 String
+  subtitle              String?
+  description           String
+  level                 String      @default("BEGINNER") // BEGINNER, ELEMENTARY, INTERMEDIATE, ADVANCED
+  category              String      @default("Career & IT")
+  orderIndex            Int         @default(1)
+  estimatedMinutes      Int         @default(15)
+  vocabularyJson        String      // JSON array of words
+  grammarJson           String      // JSON grammar rules & explanations
+  examplesJson          String      // JSON dialog/examples
+  practiceQuestionsJson String      // JSON practice quiz items
+  summaryJson           String      // JSON summary recap
+  isPublished           Boolean     @default(true)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+}
+
+model Vocabulary {
+  id                 String                @id @default(uuid())
+  word               String
+  article            String?               // der, die, das
+  plural             String?
+  englishMeaning     String
+  pronunciationTips  String?
+  usageExampleDe     String
+  usageExampleEn     String
+  category           String                @default("BASICS")
+  level              String                @default("BEGINNER")
+  partOfSpeech       String?               // noun, verb, adjective, etc.
+  createdAt          DateTime              @default(now())
+  savedByUsers       UserSavedVocabulary[]
+}
+
+model UserSavedVocabulary {
+  id            String      @id @default(uuid())
+  userId        String
+  vocabularyId  String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vocabulary    Vocabulary  @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
+  isFavorite    Boolean     @default(false)
+  masteryLevel  Int         @default(0) // 0-5 Spaced Repetition Box
+  lastReviewed  DateTime?
+  nextReviewAt  DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@unique([userId, vocabularyId])
+}
+
+model Quiz {
+  id            String       @id @default(uuid())
+  title         String
+  description   String?
+  category      String       @default("General")
+  level         String       @default("BEGINNER")
+  questionsJson String       // JSON array of dynamic questions
+  lessonId      String?
+  createdAt     DateTime     @default(now())
+  results       QuizResult[]
+}
+
+model QuizResult {
+  id              String      @id @default(uuid())
+  userId          String
+  quizId          String?
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz            Quiz?       @relation(fields: [quizId], references: [id], onDelete: SetNull)
+  score           Int
+  totalQuestions  Int
+  percentage      Float
+  category        String      @default("General")
+  answersJson     String      // JSON record of user choices and results
+  completedAt     DateTime    @default(now())
+}
+
+model Progress {
+  id                    String      @id @default(uuid())
+  userId                String      @unique
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wordsLearned          Int         @default(0)
+  lessonsCompleted      Int         @default(0)
+  streakDays            Int         @default(1)
+  lastActiveDate        DateTime    @default(now())
+  totalTimeMinutes      Int         @default(0)
+  quizAverageScore      Float       @default(0.0)
+  readingScore          Int         @default(20) // 0-100
+  writingScore          Int         @default(20) // 0-100
+  listeningScore        Int         @default(20) // 0-100
+  grammarScore          Int         @default(20) // 0-100
+  vocabularyScore       Int         @default(20) // 0-100
+  completedLessonsJson  String      @default("[]") // Array of lesson IDs
+  updatedAt             DateTime    @updatedAt
+}
+
+model Achievement {
+  id               String            @id @default(uuid())
+  code             String            @unique
+  title            String
+  description      String
+  icon             String
+  badgeCategory    String            @default("GENERAL")
+  criteria         String
+  requiredCount    Int               @default(1)
+  users            UserAchievement[]
+}
+
+model UserAchievement {
+  id             String      @id @default(uuid())
+  userId         String
+  achievementId  String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement    Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  unlockedAt     DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+}
+
+model UserActivity {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activityType  String      // LESSON_COMPLETED, QUIZ_TAKEN, VOCAB_LEARNED, CHAT_SESSION, STREAK_EXTENDED
+  title         String
+  description   String
+  metadataJson  String?
+  createdAt     DateTime    @default(now())
+}
+
+model ChatSession {
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenario      String        @default("free_tutor") // free_tutor | tech_interview | burgeramt | standup
+  title         String        @default("Conversation with KI-Tutor")
+  messagesJson  String        // Array of { role: 'user'|'assistant'|'system', content, corrections? }
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+// ==========================================
+// DEUTSCHNOVA DAY-BY-DAY LEARNING JOURNEY
+// ==========================================
+
+model LearningPlan {
+  id                  String               @id @default(uuid())
+  userId              String?              @unique
+  learnerName         String               @default("Aarav")
+  level               String               @default("A1")
+  learningGoal        String               @default("daily_life")
+  dailyTargetMinutes  Int                  @default(15)
+  currentDayNumber    Int                  @default(12)
+  onboardingCompleted Boolean              @default(true)
+  weeks               LearningWeek[]
+  userProgress        UserProgress?
+  vocabularyProgress  VocabularyProgress[]
+  grammarProgress     GrammarProgress[]
+  speakingProgress    SpeakingProgress?
+  streak              DailyStreak?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model LearningWeek {
+  id             String        @id @default(uuid())
+  learningPlanId String
+  learningPlan   LearningPlan  @relation(fields: [learningPlanId], references: [id], onDelete: Cascade)
+  weekNumber     Int
+  level          String        @default("A1")
+  title          String
+  description    String
+  focusThemesJson String       @default("[]")
+  isCompleted    Boolean       @default(false)
+  days           LearningDay[]
+}
+
+model LearningDay {
+  id                 String           @id @default(uuid())
+  learningWeekId     String
+  learningWeek       LearningWeek     @relation(fields: [learningWeekId], references: [id], onDelete: Cascade)
+  dayNumber          Int
+  weekNumber         Int
+  dayOfWeek          Int              // 1-7 (7 = Weekly Review)
+  level              String           @default("A1")
+  theme              String
+  goalTitle          String
+  subtitle           String
+  description        String
+  isWeeklyReview     Boolean          @default(false)
+  estimatedMinutes   Int              @default(15)
+  xpTotal            Int              @default(120)
+  state              String           @default("locked") // completed | today | available | locked
+  contentJson        String           // Vocabulary, Grammar, Listening, SentenceBuilding, Speaking, AI Roleplay, Quiz
+  completedAt        DateTime?
+  earnedXp           Int              @default(0)
+  quizScore          Int?
+  speakingScore      Int?
+  activities         LessonActivity[]
+}
+
+model LessonActivity {
+  id                String      @id @default(uuid())
+  learningDayId     String
+  learningDay       LearningDay @relation(fields: [learningDayId], references: [id], onDelete: Cascade)
+  dayNumber         Int
+  order             Int
+  type              String      // vocabulary | grammar | listening | sentence_building | speaking | ai_conversation | daily_quiz
+  title             String
+  subtitle          String
+  estimatedMinutes  Int         @default(3)
+  xpReward          Int         @default(20)
+  completed         Boolean     @default(false)
+  score             Int?
+  isAdaptiveBooster Boolean     @default(false)
+  adaptiveReason    String?
+}
+
+model UserProgress {
+  id                       String       @id @default(uuid())
+  learningPlanId           String       @unique
+  learningPlan             LearningPlan @relation(fields: [learningPlanId], references: [id], onDelete: Cascade)
+  currentLevel             String       @default("A1")
+  learningGoal             String       @default("daily_life")
+  dailyStudyTargetMinutes  Int          @default(15)
+  currentWeek              Int          @default(2)
+  currentDay               Int          @default(12)
+  totalXp                  Int          @default(0)
+  wordsLearnedCount        Int          @default(0)
+  grammarConceptsCount     Int          @default(0)
+  lessonsCompletedCount    Int          @default(0)
+  vocabularyAccuracy       Int          @default(82)
+  grammarAccuracy          Int          @default(74)
+  listeningAccuracy        Int          @default(88)
+  speakingAccuracy         Int          @default(85)
+  pronunciationAccuracy    Int          @default(84)
+  quizAccuracy             Int          @default(86)
+  weakAreasJson            String       @default("[]")
+}
+
+model VocabularyProgress {
+  id              String       @id @default(uuid())
+  learningPlanId  String
+  learningPlan    LearningPlan @relation(fields: [learningPlanId], references: [id], onDelete: Cascade)
+  wordId          String
+  word            String
+  article         String?
+  english         String
+  theme           String
+  masteryScore    Int          @default(60)
+  correctCount    Int          @default(0)
+  mistakeCount    Int          @default(0)
+  needsReview     Boolean      @default(false)
+  lastPracticedAt DateTime     @default(now())
+}
+
+model GrammarProgress {
+  id                String       @id @default(uuid())
+  learningPlanId    String
+  learningPlan      LearningPlan @relation(fields: [learningPlanId], references: [id], onDelete: Cascade)
+  categoryId        String
+  title             String
+  description       String
+  accuracy          Int          @default(70)
+  attempts          Int          @default(0)
+  mistakes          Int          @default(0)
+  isWeakArea        Boolean      @default(false)
+  recommendedAction String
+  lastPracticedAt   DateTime     @default(now())
+}
+
+model SpeakingProgress {
+  id                 String       @id @default(uuid())
+  learningPlanId     String       @unique
+  learningPlan       LearningPlan @relation(fields: [learningPlanId], references: [id], onDelete: Cascade)
+  overallScore       Int          @default(85)
+  pronunciationScore Int          @default(84)
+  fluencyScore       Int          @default(86)
+  phrasesPracticed   Int          @default(0)
+  challengingSounds  String       @default("[]")
+  recentScoresJson   String       @default("[]")
+}
+
+model DailyStreak {
+  id                  String       @id @default(uuid())
+  learningPlanId      String       @unique
+  learningPlan        LearningPlan @relation(fields: [learningPlanId], references: [id], onDelete: Cascade)
+  currentStreak       Int          @default(6)
+  longestStreak       Int          @default(8)
+  xpEarnedToday       Int          @default(80)
+  dailyTargetMinutes  Int          @default(15)
+  dailyTargetXp       Int          @default(120)
+  minutesStudiedToday Int          @default(12)
+  lastCompletedDate   String
+  weeklyActivityJson  String       @default("[]")
+}
+
