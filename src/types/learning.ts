@@ -327,6 +327,7 @@ export interface DetectedMistake {
   correctUsage: string;
   learnerSentence: string;
   correctSentence: string;
+  englishTranslation?: string;
   coachHeadline: string;
   explanation: string;
   transformationSteps: string[];

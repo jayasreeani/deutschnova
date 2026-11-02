@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
         mode,
         intent: analysis.intent,
         requiresRetry: true,
-        coachHeadline: analysis.detectedMistake.coachHeadline || "Fast richtig!",
+        coachHeadline: analysis.detectedMistake.coachHeadline || "Almost right! Here is your coach feedback:",
         detectedMistake: analysis.detectedMistake,
         correctStructuresUsed: analysis.correctStructuresUsed,
         wordsDetected: analysis.wordsDetected,

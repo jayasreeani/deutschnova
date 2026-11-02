@@ -15,7 +15,7 @@ import {
   Radio,
 } from "lucide-react";
 import { useLearning } from "@/context/LearningContext";
-import { speakGerman } from "./ActivityPlayer";
+import { speakGerman, speakEnglish, speakBilingual } from "./ActivityPlayer";
 import { DetectedMistake } from "@/types/learning";
 import { UniversalVoiceSession } from "@/lib/voiceRecorder";
 
@@ -27,6 +27,9 @@ export default function SpeakHubView() {
     plan.currentDayNumber <= 7 ? plan.currentDayNumber : 5
   );
   const [mode, setMode] = useState<"coach" | "real_life">("coach");
+  const [audioLanguage, setAudioLanguage] = useState<
+    "english" | "bilingual" | "german"
+  >("english");
   const [turnIndex, setTurnIndex] = useState(0);
   const [activeCoachCard, setActiveCoachCard] = useState<{
     headline: string;
@@ -124,21 +127,39 @@ export default function SpeakHubView() {
         recordLearnerMistake(detected, selectedDay.dayNumber);
       }
 
+      const playAiVoice = (deText: string, enText?: string) => {
+        if (audioLanguage === "english" && enText) {
+          speakEnglish(enText);
+        } else if (audioLanguage === "bilingual" && enText) {
+          speakBilingual(deText, enText);
+        } else {
+          speakGerman(deText, 0.92);
+        }
+      };
+
       if (mode === "coach" && data.requiresRetry && detected) {
+        const coachFeedbackText = `Coach Feedback: ${data.coachHeadline || "Almost right!"} → Say: „${detected.correctSentence}“ (${detected.englishTranslation || detected.explanation})`;
         setMessages((prev) => [
           ...prev,
           {
             sender: "user",
             german: text.trim(),
             audioUrl,
-            feedback: `${data.coachHeadline || "Fast richtig!"} → ${detected.correctSentence}`,
+            feedback: coachFeedbackText,
           },
         ]);
         setActiveCoachCard({
-          headline: data.coachHeadline || "Fast richtig!",
+          headline: data.coachHeadline || "Almost right! Here is your coach feedback:",
           mistake: detected,
         });
-        speakGerman(detected.correctSentence, 0.9);
+
+        if (audioLanguage === "english") {
+          speakEnglish(`Coach Feedback: ${detected.explanation}. In German: ${detected.correctSentence}`);
+        } else if (audioLanguage === "bilingual") {
+          speakBilingual(detected.correctSentence, detected.explanation);
+        } else {
+          speakGerman(detected.correctSentence, 0.9);
+        }
         return;
       }
 
@@ -160,7 +181,7 @@ export default function SpeakHubView() {
           english: data.aiReplyEn,
         },
       ]);
-      speakGerman(data.aiReplyDe, 0.92);
+      playAiVoice(data.aiReplyDe, data.aiReplyEn);
     } catch {
       // ignore
     }
@@ -349,8 +370,58 @@ export default function SpeakHubView() {
                   REAL-LIFE MODE
                 </button>
               </div>
+
+              {/* Audio Response Language Selector */}
+              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
+                <span className="text-[10px] uppercase font-bold text-slate-400 px-1">Audio:</span>
+                <button
+                  type="button"
+                  onClick={() => setAudioLanguage("english")}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                    audioLanguage === "english"
+                      ? "bg-teal-500 text-slate-950 shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                  title="AI will speak the English translation"
+                >
+                  🇬🇧 English
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAudioLanguage("bilingual")}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                    audioLanguage === "bilingual"
+                      ? "bg-teal-500 text-slate-950 shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                  title="AI will speak German followed by English translation"
+                >
+                  🌐 Bilingual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAudioLanguage("german")}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                    audioLanguage === "german"
+                      ? "bg-teal-500 text-slate-950 shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                  title="AI will speak German only"
+                >
+                  🇩🇪 German
+                </button>
+              </div>
+
               <button
-                onClick={() => speakGerman(scenario.openingMessageDe)}
+                onClick={() => {
+                  if (audioLanguage === "english" && scenario.openingMessageEn) {
+                    speakEnglish(scenario.openingMessageEn);
+                  } else if (audioLanguage === "bilingual" && scenario.openingMessageEn) {
+                    speakBilingual(scenario.openingMessageDe, scenario.openingMessageEn);
+                  } else {
+                    speakGerman(scenario.openingMessageDe);
+                  }
+                }}
                 className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 text-xs font-bold flex items-center gap-1.5"
               >
                 <Volume2 className="w-4 h-4" /> Replay Opening
@@ -380,21 +451,53 @@ export default function SpeakHubView() {
                       : "bg-slate-800/90 border border-slate-700 text-slate-100"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-3 mb-1">
+                  <div className="flex items-center justify-between gap-3 mb-1.5">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
                       {m.sender === "user" ? "You" : scenario.roleplayPartner}
                     </span>
-                    <button
-                      onClick={() => speakGerman(m.german)}
-                      className="text-slate-400 hover:text-emerald-400"
-                    >
-                      <Volume2 className="w-3.5 h-3.5" />
-                    </button>
+                    {m.sender === "ai" ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => speakGerman(m.german)}
+                          className="px-2 py-0.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center gap-1 text-[11px] font-semibold"
+                          title="Listen in German"
+                        >
+                          <Volume2 className="w-3 h-3 text-emerald-400" /> 🇩🇪 DE
+                        </button>
+                        {m.english && (
+                          <button
+                            type="button"
+                            onClick={() => speakEnglish(m.english || "")}
+                            className="px-2 py-0.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-teal-300 hover:text-white flex items-center gap-1 text-[11px] font-semibold"
+                            title="Listen in English"
+                          >
+                            <Volume2 className="w-3 h-3 text-teal-400" /> 🇬🇧 EN
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => speakGerman(m.german)}
+                        className="text-slate-400 hover:text-emerald-400"
+                        title="Listen (de-DE)"
+                      >
+                        <Volume2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
+
                   <p className="text-sm font-semibold">{m.german}</p>
+
                   {m.english && (
-                    <p className="text-xs text-slate-400 mt-1">{m.english}</p>
+                    <div className="mt-2.5 p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 text-xs">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block mb-0.5">
+                        English Translation:
+                      </span>
+                      <p className="text-slate-200 text-xs sm:text-sm font-medium">{m.english}</p>
+                    </div>
                   )}
+
                   {m.audioUrl && (
                     <div className="mt-2.5 flex items-center gap-2 bg-slate-900/90 border border-teal-500/40 rounded-xl px-3 py-1.5 text-xs">
                       <button
@@ -412,7 +515,7 @@ export default function SpeakHubView() {
                   )}
                 </div>
                 {m.feedback && (
-                  <span className="text-xs text-emerald-400 mt-1 px-2">
+                  <span className="text-xs text-emerald-400 mt-1 px-2 font-medium">
                     ★ {m.feedback}
                   </span>
                 )}
@@ -422,17 +525,43 @@ export default function SpeakHubView() {
 
           {/* Coach Mode Correction Card */}
           {activeCoachCard && (
-            <div className="rounded-2xl bg-amber-950/50 border-2 border-amber-500/50 p-4 space-y-2.5 text-xs">
-              <div className="font-extrabold text-amber-300 uppercase">
-                {activeCoachCard.headline}
+            <div className="rounded-2xl bg-amber-950/50 border-2 border-amber-500/50 p-4 space-y-2.5 text-xs shadow-lg">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-extrabold text-amber-300 uppercase">
+                  {activeCoachCard.headline}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => speakGerman(activeCoachCard.mistake.correctSentence)}
+                    className="px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 flex items-center gap-1 text-[11px]"
+                    title="Hear in German"
+                  >
+                    <Volume2 className="w-3 h-3" /> 🇩🇪 German
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => speakEnglish(activeCoachCard.mistake.explanation)}
+                    className="px-2 py-1 rounded-lg bg-teal-500/20 text-teal-300 hover:bg-teal-500/30 flex items-center gap-1 text-[11px]"
+                    title="Hear in English"
+                  >
+                    <Volume2 className="w-3 h-3" /> 🇬🇧 English
+                  </button>
+                </div>
               </div>
               <div className="text-white">
                 Correct sentence:{" "}
                 <strong className="text-emerald-300">
                   „{activeCoachCard.mistake.correctSentence}“
                 </strong>
+                {activeCoachCard.mistake.englishTranslation && (
+                  <div className="text-xs text-slate-300 mt-0.5">
+                    English: &ldquo;{activeCoachCard.mistake.englishTranslation}&rdquo;
+                  </div>
+                )}
               </div>
               <p className="text-slate-200">
+                <span className="font-bold text-amber-300">Why in English: </span>
                 {activeCoachCard.mistake.explanation}
               </p>
               <div className="flex flex-wrap gap-2 pt-1">

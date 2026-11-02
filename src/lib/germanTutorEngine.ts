@@ -306,7 +306,8 @@ export function analyzeGermanUtterance(
         correctUsage: correctPhrase.replace(/[.!?]+$/, ""),
         learnerSentence: raw,
         correctSentence: correctPhrase,
-        coachHeadline: "Fast richtig! Watch the verb position.",
+        englishTranslation: `I would like a ${nounRaw.toLowerCase()}, please.`,
+        coachHeadline: "Almost right! Watch the verb position.",
         explanation: `In a German statement, the action verb ("${verbRaw}") must stand in Position 2 right after "Ich" → "${correctPhrase}"`,
         transformationSteps: [
           "Position 1: Subject (Ich)",
@@ -406,7 +407,8 @@ export function analyzeGermanUtterance(
         correctUsage: fix.politeAlternative,
         learnerSentence: raw,
         correctSentence: correctedSentence,
-        coachHeadline: "Fast richtig!",
+        englishTranslation: "I would like a coffee, please.",
+        coachHeadline: "Almost right! Watch the verb conjugation.",
         explanation: fix.ruleNote,
         transformationSteps: [
           `Infinitive / Plural: ${wrongVerb}`,
@@ -503,7 +505,8 @@ export function analyzeGermanUtterance(
             correctUsage,
             learnerSentence: raw,
             correctSentence: formattedCorrect,
-            coachHeadline: "Fast richtig!",
+            englishTranslation: `I would like a ${item.english}, please.`,
+            coachHeadline: "Almost right! Use the masculine accusative case (einen).",
             explanation: `"der ${item.noun}" is a masculine noun. When ordering ("Ich möchte..." / "Für mich..."), masculine nouns take "einen" → "${correctUsage}".`,
             transformationSteps: [
               `der ${item.noun} (masculine noun)`,
@@ -543,7 +546,8 @@ export function analyzeGermanUtterance(
         correctUsage: `Der ${noun}`,
         learnerSentence: raw,
         correctSentence: corrected,
-        coachHeadline: "Fast richtig!",
+        englishTranslation: `The ${noun.toLowerCase()} is...`,
+        coachHeadline: "Almost right! Subject stays in the nominative case (der/ein).",
         explanation: `Here "${noun}" is the subject of "${m[2]}", so it stays in the Nominative case ("Der ${noun}" or "Ein ${noun}").`,
         transformationSteps: [
           `Subject of "${m[2]}" = Nominative`,
@@ -585,7 +589,8 @@ export function analyzeGermanUtterance(
         correctSentence:
           correctedFull.charAt(0).toUpperCase() +
           correctedFull.slice(1).replace(/[.!?]*$/, "."),
-        coachHeadline: "Fast richtig!",
+        englishTranslation: "A soup, please.",
+        coachHeadline: "Almost right! 'die Suppe' is feminine (eine Suppe).",
         explanation:
           '"die Suppe" is feminine ("die"), so "a soup" is always "eine Suppe".',
         transformationSteps: [
@@ -631,7 +636,8 @@ export function analyzeGermanUtterance(
         correctSentence:
           correctedFull.charAt(0).toUpperCase() +
           correctedFull.slice(1).replace(/[.!?]*$/, "."),
-        coachHeadline: "Fast richtig!",
+        englishTranslation: `A ${noun.toLowerCase()}, please.`,
+        coachHeadline: "Almost right! Neuter nouns take 'ein' or 'das'.",
         explanation: `"das ${noun}" is neuter ("das"), so use "${correctUsage}".`,
         transformationSteps: [
           `das ${noun} (neuter noun)`,
@@ -664,7 +670,8 @@ export function analyzeGermanUtterance(
         correctUsage: "die Rechnung",
         learnerSentence: raw,
         correctSentence: "Die Rechnung, bitte.",
-        coachHeadline: "Fast richtig!",
+        englishTranslation: "The bill, please.",
+        coachHeadline: "Almost right! 'die Rechnung' is feminine (Die Rechnung, bitte).",
         explanation:
           'All German nouns ending in "-ung" are feminine ("die") → "Die Rechnung, bitte."',
         transformationSteps: [
@@ -708,7 +715,8 @@ export function analyzeGermanUtterance(
         correctUsage,
         learnerSentence: raw,
         correctSentence: correctedFull,
-        coachHeadline: "Fast richtig!",
+        englishTranslation: `with my ${noun.toLowerCase()}`,
+        coachHeadline: "Almost right! 'mit' takes the dative case (mit meiner...).",
         explanation: `"mit" always requires the Dative case: die ${noun} → ${correctUsage}.`,
         transformationSteps: [
           `die ${noun} (feminine)`,
@@ -755,7 +763,8 @@ export function analyzeGermanUtterance(
         correctUsage: `${art} ${nounCap}, bitte`,
         learnerSentence: raw,
         correctSentence: politeChunk,
-        coachHeadline: "Fast richtig! Add the article for a natural order.",
+        englishTranslation: `A ${nounRaw.toLowerCase()}, please.`,
+        coachHeadline: "Almost right! Add the article for a natural order.",
         explanation: `In Austria and Germany, include the article ("${art.toLowerCase()} ${nounCap}") and "bitte": "${politeChunk}" or "Ich möchte ${art.toLowerCase()} ${nounCap}, bitte."`,
         transformationSteps: [
           `${baseArt} ${nounCap}`,

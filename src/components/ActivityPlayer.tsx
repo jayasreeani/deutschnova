@@ -41,7 +41,7 @@ interface ActivityPlayerProps {
 }
 
 export function speakGerman(text: string, rate = 0.92) {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  if (typeof window === "undefined" || !("speechSynthesis" in window) || !text) return;
   try {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
@@ -51,6 +51,66 @@ export function speakGerman(text: string, rate = 0.92) {
     const deVoice = voices.find((v) => v.lang.toLowerCase().startsWith("de"));
     if (deVoice) utterance.voice = deVoice;
     window.speechSynthesis.speak(utterance);
+  } catch {
+    // Ignore speech synthesis errors on unsupported environments
+  }
+}
+
+export function speakEnglish(text: string, rate = 0.95) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window) || !text) return;
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    utterance.rate = rate;
+    const voices = window.speechSynthesis.getVoices();
+    const enVoice = voices.find(
+      (v) =>
+        v.lang.toLowerCase().startsWith("en-us") ||
+        v.lang.toLowerCase().startsWith("en-gb") ||
+        v.lang.toLowerCase().startsWith("en")
+    );
+    if (enVoice) utterance.voice = enVoice;
+    window.speechSynthesis.speak(utterance);
+  } catch {
+    // Ignore speech synthesis errors on unsupported environments
+  }
+}
+
+export function speakBilingual(germanText: string, englishText: string, rate = 0.92) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    if (!germanText) {
+      if (englishText) speakEnglish(englishText);
+      return;
+    }
+    const deUtterance = new SpeechSynthesisUtterance(germanText);
+    deUtterance.lang = "de-DE";
+    deUtterance.rate = rate;
+    const voices = window.speechSynthesis.getVoices();
+    const deVoice = voices.find((v) => v.lang.toLowerCase().startsWith("de"));
+    if (deVoice) deUtterance.voice = deVoice;
+
+    if (englishText) {
+      deUtterance.onend = () => {
+        try {
+          const enUtterance = new SpeechSynthesisUtterance(englishText);
+          enUtterance.lang = "en-US";
+          enUtterance.rate = 0.95;
+          const enVoice = voices.find(
+            (v) =>
+              v.lang.toLowerCase().startsWith("en-us") ||
+              v.lang.toLowerCase().startsWith("en-gb") ||
+              v.lang.toLowerCase().startsWith("en")
+          );
+          if (enVoice) enUtterance.voice = enVoice;
+          window.speechSynthesis.speak(enUtterance);
+        } catch {}
+      };
+    }
+
+    window.speechSynthesis.speak(deUtterance);
   } catch {
     // Ignore speech synthesis errors on unsupported environments
   }
@@ -121,6 +181,9 @@ export default function ActivityPlayer({
 
   // AI Conversation / Real-Life Mission state (Dynamic /api/ai-mission)
   const [missionMode, setMissionMode] = useState<"coach" | "real_life">("coach");
+  const [missionAudioLanguage, setMissionAudioLanguage] = useState<
+    "english" | "bilingual" | "german"
+  >("english");
   const [chatHistory, setChatHistory] = useState<
     {
       sender: "ai" | "user";
@@ -1459,24 +1522,44 @@ export default function ActivityPlayer({
           );
         }
 
-        // COACH MODE: Pause and show "Fast richtig!" + "Try Again" when a material mistake is detected
+        // Play AI speech based on learner's language preference
+        const playAiVoice = (deText: string, enText?: string) => {
+          if (missionAudioLanguage === "english" && enText) {
+            speakEnglish(enText);
+          } else if (missionAudioLanguage === "bilingual" && enText) {
+            speakBilingual(deText, enText);
+          } else {
+            speakGerman(deText, 0.92);
+          }
+        };
+
+        // COACH MODE: Pause and show English coach feedback + "Try Again" when a material mistake is detected
         if (missionMode === "coach" && data.requiresRetry && detected) {
+          const englishFeedback = `Coach Feedback: ${data.coachHeadline || "Almost right!"} → Say: „${detected.correctSentence}“ (${detected.englishTranslation || detected.explanation})`;
           setChatHistory((prev) => [
             ...prev,
             {
               sender: "user",
               german: trimmed,
               audioUrl,
-              feedback: `${data.coachHeadline || "Fast richtig!"} → ${detected.correctSentence}`,
+              feedback: englishFeedback,
               mistake: detected,
               requiresRetry: true,
             },
           ]);
           setActiveCoachCorrection({
-            headline: data.coachHeadline || "Fast richtig!",
+            headline: data.coachHeadline || "Almost right! Here is your coach feedback:",
             mistake: detected,
           });
-          speakGerman(detected.correctSentence, 0.9);
+
+          if (missionAudioLanguage === "english") {
+            speakEnglish(`Coach Feedback: ${detected.explanation}. In German: ${detected.correctSentence}`);
+          } else if (missionAudioLanguage === "bilingual") {
+            speakBilingual(detected.correctSentence, detected.explanation);
+          } else {
+            speakGerman(detected.correctSentence, 0.9);
+          }
+
           setIsAiThinking(false);
           return;
         }
@@ -1515,7 +1598,7 @@ export default function ActivityPlayer({
           },
         ]);
 
-        speakGerman(data.aiReplyDe, 0.92);
+        playAiVoice(data.aiReplyDe, data.aiReplyEn);
 
         // Build evidence-based MISSION COMPLETE feedback when the waiter completes the bill/interaction
         if (data.missionCompleted) {
@@ -1767,13 +1850,55 @@ export default function ActivityPlayer({
               </>
             )}
           </div>
-          <button
-            type="button"
-            onClick={resetMissionConversation}
-            className="text-xs font-bold underline hover:text-white shrink-0"
-          >
-            Reset Dialogue
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Audio Response Language Selector */}
+            <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
+              <span className="text-[10px] uppercase font-bold text-slate-400 px-1">Audio:</span>
+              <button
+                type="button"
+                onClick={() => setMissionAudioLanguage("english")}
+                className={`px-2 py-0.5 rounded-lg text-xs font-bold transition ${
+                  missionAudioLanguage === "english"
+                    ? "bg-teal-500 text-slate-950 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="AI will speak the English translation"
+              >
+                🇬🇧 English
+              </button>
+              <button
+                type="button"
+                onClick={() => setMissionAudioLanguage("bilingual")}
+                className={`px-2 py-0.5 rounded-lg text-xs font-bold transition ${
+                  missionAudioLanguage === "bilingual"
+                    ? "bg-teal-500 text-slate-950 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="AI will speak German followed by English translation"
+              >
+                🌐 Bilingual
+              </button>
+              <button
+                type="button"
+                onClick={() => setMissionAudioLanguage("german")}
+                className={`px-2 py-0.5 rounded-lg text-xs font-bold transition ${
+                  missionAudioLanguage === "german"
+                    ? "bg-teal-500 text-slate-950 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="AI will speak German only"
+              >
+                🇩🇪 German
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={resetMissionConversation}
+              className="text-xs font-bold underline text-slate-400 hover:text-white shrink-0"
+            >
+              Reset
+            </button>
+          </div>
         </div>
 
         {/* Chat Messages */}
@@ -1794,21 +1919,49 @@ export default function ActivityPlayer({
                     : "bg-slate-800/90 border border-slate-700 text-slate-100"
                 }`}
               >
-                <div className="flex items-center justify-between gap-3 mb-1">
+                <div className="flex items-center justify-between gap-3 mb-1.5">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
                     {msg.sender === "user" ? "You" : ai.roleplayPartner}
                   </span>
-                  <button
-                    onClick={() => speakGerman(msg.german)}
-                    className="text-slate-400 hover:text-emerald-400"
-                    title="Listen (de-DE)"
-                  >
-                    <Volume2 className="w-3.5 h-3.5" />
-                  </button>
+                  {msg.sender === "ai" ? (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => speakGerman(msg.german)}
+                        className="px-2 py-0.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center gap-1 text-[11px] font-semibold"
+                        title="Listen in German"
+                      >
+                        <Volume2 className="w-3 h-3 text-emerald-400" /> 🇩🇪 DE
+                      </button>
+                      {msg.english && (
+                        <button
+                          type="button"
+                          onClick={() => speakEnglish(msg.english || "")}
+                          className="px-2 py-0.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-teal-300 hover:text-white flex items-center gap-1 text-[11px] font-semibold"
+                          title="Listen in English"
+                        >
+                          <Volume2 className="w-3 h-3 text-teal-400" /> 🇬🇧 EN
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => speakGerman(msg.german)}
+                      className="text-slate-400 hover:text-emerald-400"
+                      title="Listen (de-DE)"
+                    >
+                      <Volume2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
                 <p className="text-sm font-semibold">{msg.german}</p>
                 {msg.english && (
-                  <p className="text-xs text-slate-400 mt-1">{msg.english}</p>
+                  <div className="mt-2.5 p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 text-xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block mb-0.5">
+                      English Translation:
+                    </span>
+                    <p className="text-slate-200 text-xs sm:text-sm font-medium">{msg.english}</p>
+                  </div>
                 )}
                 {msg.audioUrl && (
                   <div className="mt-2.5 flex items-center gap-2 bg-slate-900/90 border border-teal-500/40 rounded-xl px-3 py-1.5 text-xs">
@@ -1844,7 +1997,7 @@ export default function ActivityPlayer({
           )}
         </div>
 
-        {/* COACH MODE INTERACTIVE CORRECTION CARD ("Fast richtig!" + "Try Again") */}
+        {/* COACH MODE INTERACTIVE CORRECTION CARD ("Almost right!" + "Try Again") */}
         {activeCoachCorrection && (
           <div className="mb-4 rounded-2xl bg-gradient-to-br from-amber-950/60 via-slate-900 to-slate-950 border-2 border-amber-500/50 p-4 sm:p-5 shadow-xl space-y-3">
             <div className="flex items-center justify-between gap-2">
@@ -1869,31 +2022,50 @@ export default function ActivityPlayer({
               <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-500/40 flex items-center justify-between gap-2">
                 <div>
                   <div className="text-[11px] uppercase font-bold text-emerald-300">
-                    Correct Sentence:
+                    Correct German:
                   </div>
                   <div className="font-extrabold text-emerald-200 mt-0.5">
                     „{activeCoachCorrection.mistake.correctSentence}“
                   </div>
+                  {activeCoachCorrection.mistake.englishTranslation && (
+                    <div className="text-xs text-slate-300 mt-0.5">
+                      English: &ldquo;{activeCoachCorrection.mistake.englishTranslation}&rdquo;
+                    </div>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    speakGerman(
-                      activeCoachCorrection.mistake.correctSentence,
-                      0.88
-                    )
-                  }
-                  className="p-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
-                  title="Hear correct German"
-                >
-                  <Volume2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      speakGerman(
+                        activeCoachCorrection.mistake.correctSentence,
+                        0.88
+                      )
+                    }
+                    className="p-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
+                    title="Hear correct German"
+                  >
+                    <Volume2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      speakEnglish(
+                        activeCoachCorrection.mistake.explanation
+                      )
+                    }
+                    className="p-2 rounded-lg bg-teal-500/20 text-teal-300 hover:bg-teal-500/30"
+                    title="Hear English explanation"
+                  >
+                    <Volume2 className="w-4 h-4 text-teal-400" />
+                  </button>
+                </div>
               </div>
             </div>
 
             <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-200 leading-relaxed">
               <strong className="text-amber-300">
-                Why ({activeCoachCorrection.mistake.category}):
+                Why in English ({activeCoachCorrection.mistake.category}):
               </strong>{" "}
               {activeCoachCorrection.mistake.explanation}
             </div>
