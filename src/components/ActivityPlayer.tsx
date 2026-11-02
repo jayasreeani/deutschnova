@@ -150,6 +150,7 @@ export default function ActivityPlayer({
   const [missionCompleteData, setMissionCompleteData] =
     useState<MissionCompletionFeedback | null>(null);
   const [isMissionListening, setIsMissionListening] = useState(false);
+  const liveMissionTranscriptRef = useRef<string>("");
 
   // Quiz state
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
@@ -1116,30 +1117,39 @@ export default function ActivityPlayer({
           const recognition: any = new (SpeechRecognition as any)();
           activeRecognitionRef.current = recognition;
           recognition.lang = "de-DE";
-          recognition.interimResults = false;
+          recognition.interimResults = true;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           recognition.onresult = (event: any) => {
-            const transcript = (
-              event.results?.[0]?.[0]?.transcript || ""
-            ).trim();
-            setRecordingId(null);
-            activeRecognitionRef.current = null;
-            if (!transcript) {
-              setSpeechNotice(
-                "Empty speech recognition result: no German words were detected. Try speaking closer to the microphone or use the text verification fallback."
-              );
-              return;
+            let finalStr = "";
+            let interimStr = "";
+            for (let i = 0; i < event.results.length; ++i) {
+              const res = event.results[i];
+              if (res.isFinal) {
+                finalStr += res[0]?.transcript || "";
+              } else {
+                interimStr += res[0]?.transcript || "";
+              }
             }
-            const matchSummary = computeWordMatchSummary(
-              promptItem.germanPhrase,
-              transcript
-            );
-            setSpokenTranscript((p) => ({ ...p, [promptItem.id]: transcript }));
-            if (matchSummary) {
-              setSpeakingWordMatchRatio((p) => ({
+            const transcript = (finalStr || interimStr).trim();
+            if (transcript) {
+              setSpokenTranscript((p) => ({
                 ...p,
-                [promptItem.id]: matchSummary,
+                [promptItem.id]: transcript,
               }));
+            }
+            if (finalStr.trim()) {
+              setRecordingId(null);
+              activeRecognitionRef.current = null;
+              const matchSummary = computeWordMatchSummary(
+                promptItem.germanPhrase,
+                finalStr.trim()
+              );
+              if (matchSummary) {
+                setSpeakingWordMatchRatio((p) => ({
+                  ...p,
+                  [promptItem.id]: matchSummary,
+                }));
+              }
             }
           };
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1548,17 +1558,28 @@ export default function ActivityPlayer({
       await sendLearnerTurnToMissionApi(text);
     };
 
-    const startMissionVoiceInput = () => {
-      setSpeechNotice(null);
-      if (isMissionListening) {
+    const stopAndSendMissionVoiceInput = () => {
+      const toSend = (liveMissionTranscriptRef.current || customInput).trim();
+      if (activeRecognitionRef.current) {
         try {
-          activeRecognitionRef.current?.abort();
-          activeRecognitionRef.current = null;
+          activeRecognitionRef.current.stop();
         } catch {
           // ignore
         }
-        setIsMissionListening(false);
-        setSpeechNotice("Microphone listening cancelled.");
+      }
+      setIsMissionListening(false);
+      activeRecognitionRef.current = null;
+      if (toSend) {
+        setCustomInput("");
+        liveMissionTranscriptRef.current = "";
+        sendLearnerTurnToMissionApi(toSend);
+      }
+    };
+
+    const startMissionVoiceInput = async () => {
+      setSpeechNotice(null);
+      if (isMissionListening) {
+        stopAndSendMissionVoiceInput();
         return;
       }
 
@@ -1571,34 +1592,63 @@ export default function ActivityPlayer({
 
       if (!SpeechRecognition || typeof SpeechRecognition !== "function") {
         setSpeechNotice(
-          "SpeechRecognition (de-DE) is not supported in this browser window. Type your response below or use Chrome/Edge microphone input."
+          "Speech recognition is not supported in this browser window. Please use Google Chrome, Microsoft Edge, or Safari, or type your response below."
         );
         return;
       }
 
+      // Explicitly check for mic permission if getUserMedia is available
+      if (
+        navigator.mediaDevices &&
+        typeof navigator.mediaDevices.getUserMedia === "function"
+      ) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          stream.getTracks().forEach((t) => t.stop());
+        } catch (err: any) {
+          if (
+            err?.name === "NotAllowedError" ||
+            err?.name === "PermissionDeniedError"
+          ) {
+            setSpeechNotice(
+              "Microphone access blocked: Please click the lock or camera icon in your browser address bar to allow microphone access, then try again."
+            );
+            return;
+          }
+        }
+      }
+
       try {
         setIsMissionListening(true);
+        liveMissionTranscriptRef.current = "";
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const recognition: any = new (SpeechRecognition as any)();
         activeRecognitionRef.current = recognition;
         recognition.lang = "de-DE";
-        recognition.interimResults = false;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         recognition.onresult = (event: any) => {
-          const transcript = (
-            event.results?.[0]?.[0]?.transcript || ""
-          ).trim();
-          setIsMissionListening(false);
-          activeRecognitionRef.current = null;
-          if (!transcript) {
-            setSpeechNotice(
-              "No German speech was recognized. Please try speaking again or type your response."
-            );
-            return;
+          let finalStr = "";
+          let interimStr = "";
+          for (let i = 0; i < event.results.length; ++i) {
+            const res = event.results[i];
+            if (res.isFinal) {
+              finalStr += res[0]?.transcript || "";
+            } else {
+              interimStr += res[0]?.transcript || "";
+            }
           }
-          setCustomInput(transcript);
-          sendLearnerTurnToMissionApi(transcript);
+          const textSpoken = (finalStr || interimStr).trim();
+          if (textSpoken) {
+            liveMissionTranscriptRef.current = textSpoken;
+            setCustomInput(textSpoken);
+          }
         };
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         recognition.onerror = (err: any) => {
           setIsMissionListening(false);
@@ -1606,22 +1656,42 @@ export default function ActivityPlayer({
           const code = err?.error || "unavailable";
           if (code === "not-allowed" || code === "service-not-allowed") {
             setSpeechNotice(
-              "Microphone permission denied: allow microphone access in your browser or type your German response below."
+              "Microphone access blocked: Please click the lock icon in your browser address bar to allow microphone access."
             );
           } else if (code === "no-speech") {
             setSpeechNotice(
-              "No speech detected: try speaking closer to the microphone or type below."
+              "No speech detected: Please speak closer to your microphone, or type your response below."
+            );
+          } else if (code === "network") {
+            setSpeechNotice(
+              "Speech recognition network error: Cloud speech services may be temporarily unreachable or blocked. You can type directly below."
+            );
+          } else if (code !== "aborted") {
+            setSpeechNotice(
+              `Speech recognition notice (${code}): Please try speaking again or type your message.`
             );
           }
         };
+
         recognition.onend = () => {
           setIsMissionListening(false);
           activeRecognitionRef.current = null;
+          const finalRecorded = liveMissionTranscriptRef.current.trim();
+          if (finalRecorded) {
+            setCustomInput("");
+            liveMissionTranscriptRef.current = "";
+            sendLearnerTurnToMissionApi(finalRecorded);
+          }
         };
+
         recognition.start();
-      } catch {
+      } catch (e: any) {
         setIsMissionListening(false);
         activeRecognitionRef.current = null;
+        setSpeechNotice(
+          "Could not start microphone: " +
+            (e?.message || "Please try typing below.")
+        );
       }
     };
 
@@ -2043,37 +2113,69 @@ export default function ActivityPlayer({
           </div>
         </div>
 
-        {/* Custom German Input + Real Microphone Button */}
-        <form onSubmit={handleSendCustom} className="flex gap-2 mb-5">
-          <input
-            type="text"
-            value={customInput}
-            onChange={(e) => setCustomInput(e.target.value)}
-            placeholder='Speak or type naturally in German (e.g. "Ich möchte eine Kaffee.")...'
-            className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-teal-500"
-          />
-          <button
-            type="button"
-            onClick={startMissionVoiceInput}
-            className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
-              isMissionListening
-                ? "bg-rose-500 text-white border-rose-400 animate-pulse"
-                : "bg-slate-900 hover:bg-slate-800 text-rose-300 border-slate-700"
-            }`}
-            title="Speak German with Microphone (de-DE)"
-          >
-            <Mic className="w-4 h-4" />
-            <span className="hidden sm:inline">
-              {isMissionListening ? "Listening..." : "Speak"}
-            </span>
-          </button>
-          <button
-            type="submit"
-            disabled={isAiThinking}
-            className="px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5"
-          >
-            <Send className="w-3.5 h-3.5" /> Send
-          </button>
+        {/* Custom German Input + Real Microphone Button + Live Speech Status */}
+        <form onSubmit={handleSendCustom} className="space-y-2 mb-5">
+          {speechNotice && (
+            <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-xs text-amber-200 flex items-center justify-between gap-2 shadow-sm">
+              <span>{speechNotice}</span>
+              <button
+                type="button"
+                onClick={() => setSpeechNotice(null)}
+                className="text-slate-400 hover:text-white font-bold px-1.5"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {isMissionListening && (
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-xs text-rose-300 animate-pulse">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
+              <span className="font-bold shrink-0">Listening in German (de-DE)...</span>
+              <span className="text-slate-200 italic truncate max-w-xs sm:max-w-md">
+                {customInput ? `„${customInput}“` : "Speak now into your microphone"}
+              </span>
+              <button
+                type="button"
+                onClick={stopAndSendMissionVoiceInput}
+                className="ml-auto px-2.5 py-1 rounded-lg bg-rose-500 text-white font-extrabold text-xs shadow hover:bg-rose-600 shrink-0"
+              >
+                Finish &amp; Send
+              </button>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={customInput}
+              onChange={(e) => setCustomInput(e.target.value)}
+              placeholder='Speak or type naturally in German (e.g. "Ich möchte einen Kaffee, bitte.")...'
+              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-teal-500"
+            />
+            <button
+              type="button"
+              onClick={startMissionVoiceInput}
+              className={`px-3.5 sm:px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
+                isMissionListening
+                  ? "bg-rose-500 text-white border-rose-400 animate-pulse shadow-lg shadow-rose-500/30"
+                  : "bg-slate-900 hover:bg-slate-800 text-rose-300 border-rose-500/40"
+              }`}
+              title="Speak German with Microphone (de-DE)"
+            >
+              <Mic className="w-4 h-4" />
+              <span>
+                {isMissionListening ? "Finish" : "Speak"}
+              </span>
+            </button>
+            <button
+              type="submit"
+              disabled={isAiThinking}
+              className="px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5"
+            >
+              <Send className="w-3.5 h-3.5" /> Send
+            </button>
+          </div>
         </form>
 
         {/* EVIDENCE-BASED MISSION COMPLETE FEEDBACK SCREEN */}

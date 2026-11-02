@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Mic,
   Volume2,
@@ -138,8 +138,45 @@ export default function SpeakHubView() {
     sendToMissionBackend(prompt.german, idx);
   };
 
-  const handleRealSpeechInput = () => {
+  const recognitionRef = useRef<any>(null);
+  const liveTranscriptRef = useRef<string>("");
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, []);
+
+  const stopAndSendSpeech = () => {
+    const toSend = (liveTranscriptRef.current || customText).trim();
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+    }
+    setIsRecording(false);
+    if (toSend) {
+      setCustomText("");
+      liveTranscriptRef.current = "";
+      sendToMissionBackend(toSend);
+    }
+  };
+
+  const handleRealSpeechInput = async () => {
     setVoiceNotice(null);
+    if (isRecording) {
+      stopAndSendSpeech();
+      return;
+    }
+
     const SpeechRecognition =
       typeof window !== "undefined"
         ? (window as unknown as Record<string, unknown>).SpeechRecognition ||
@@ -148,35 +185,106 @@ export default function SpeakHubView() {
 
     if (!SpeechRecognition || typeof SpeechRecognition !== "function") {
       setVoiceNotice(
-        "SpeechRecognition (de-DE) is unavailable in this browser window. Use Chrome/Edge microphone or type your response below."
+        "Speech recognition is not supported in this browser. Please use Google Chrome, Microsoft Edge, or Safari, or type your message below."
       );
       return;
     }
 
+    // Explicitly check for mic permission if getUserMedia is available
+    if (
+      navigator.mediaDevices &&
+      typeof navigator.mediaDevices.getUserMedia === "function"
+    ) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        stream.getTracks().forEach((t) => t.stop());
+      } catch (err: any) {
+        if (
+          err?.name === "NotAllowedError" ||
+          err?.name === "PermissionDeniedError"
+        ) {
+          setVoiceNotice(
+            "Microphone access blocked: Please click the lock or camera icon in your browser address bar to allow microphone access, then try again."
+          );
+          return;
+        }
+      }
+    }
+
     try {
       setIsRecording(true);
+      liveTranscriptRef.current = "";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const recognition: any = new (SpeechRecognition as any)();
+      recognitionRef.current = recognition;
       recognition.lang = "de-DE";
-      recognition.interimResults = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onresult = (event: any) => {
-        const transcript = event.results?.[0]?.[0]?.transcript || "";
-        setIsRecording(false);
-        if (transcript) {
-          setCustomText(transcript);
-          sendToMissionBackend(transcript);
+        let finalStr = "";
+        let interimStr = "";
+        for (let i = 0; i < event.results.length; ++i) {
+          const res = event.results[i];
+          if (res.isFinal) {
+            finalStr += res[0]?.transcript || "";
+          } else {
+            interimStr += res[0]?.transcript || "";
+          }
+        }
+        const textSpoken = (finalStr || interimStr).trim();
+        if (textSpoken) {
+          liveTranscriptRef.current = textSpoken;
+          setCustomText(textSpoken);
         }
       };
-      recognition.onerror = () => {
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      recognition.onerror = (err: any) => {
         setIsRecording(false);
+        recognitionRef.current = null;
+        const errType = err?.error || "unknown";
+        if (errType === "not-allowed" || errType === "service-not-allowed") {
+          setVoiceNotice(
+            "Microphone access blocked: Click the lock icon in your browser address bar to allow microphone access."
+          );
+        } else if (errType === "no-speech") {
+          setVoiceNotice(
+            "No speech detected: Speak closer to your microphone or type your response below."
+          );
+        } else if (errType === "network") {
+          setVoiceNotice(
+            "Speech recognition network error: Cloud speech services may be temporarily unavailable or blocked. You can type directly below."
+          );
+        } else if (errType !== "aborted") {
+          setVoiceNotice(
+            `Speech recognition notice (${errType}): Please try speaking again or type your message.`
+          );
+        }
       };
+
       recognition.onend = () => {
         setIsRecording(false);
+        recognitionRef.current = null;
+        const finalRecorded = liveTranscriptRef.current.trim();
+        if (finalRecorded) {
+          setCustomText("");
+          liveTranscriptRef.current = "";
+          sendToMissionBackend(finalRecorded);
+        }
       };
+
       recognition.start();
-    } catch {
+    } catch (e: any) {
       setIsRecording(false);
+      recognitionRef.current = null;
+      setVoiceNotice(
+        "Could not start microphone: " +
+          (e?.message || "Please try typing below.")
+      );
     }
   };
 
@@ -454,21 +562,66 @@ export default function SpeakHubView() {
             </div>
           </div>
 
-          {/* Free Input */}
-          <form onSubmit={handleCustomSend} className="flex gap-2 pt-1">
-            <input
-              type="text"
-              value={customText}
-              onChange={(e) => setCustomText(e.target.value)}
-              placeholder='Type naturally in German (e.g. "Ich möchte eine Kaffee." or "Ich möchte einen Kaffee.")...'
-              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-teal-500"
-            />
-            <button
-              type="submit"
-              className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5"
-            >
-              <Send className="w-3.5 h-3.5" /> Send
-            </button>
+          {/* Free Input with Prominent Microphone & Live Speech Status */}
+          <form onSubmit={handleCustomSend} className="space-y-2 pt-1">
+            {voiceNotice && (
+              <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-xs text-amber-200 flex items-center justify-between gap-2 shadow-sm">
+                <span>{voiceNotice}</span>
+                <button
+                  type="button"
+                  onClick={() => setVoiceNotice(null)}
+                  className="text-slate-400 hover:text-white font-bold px-1.5"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {isRecording && (
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-xs text-rose-300 animate-pulse">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
+                <span className="font-bold shrink-0">Listening in German (de-DE)...</span>
+                <span className="text-slate-200 italic truncate max-w-xs sm:max-w-md">
+                  {customText ? `„${customText}“` : "Speak now into your microphone"}
+                </span>
+                <button
+                  type="button"
+                  onClick={stopAndSendSpeech}
+                  className="ml-auto px-2.5 py-1 rounded-lg bg-rose-500 text-white font-extrabold text-xs shadow hover:bg-rose-600 shrink-0"
+                >
+                  Finish &amp; Send
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={customText}
+                onChange={(e) => setCustomText(e.target.value)}
+                placeholder='Speak into mic or type (e.g. "Ich möchte einen Kaffee, bitte.")...'
+                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-teal-500"
+              />
+              <button
+                type="button"
+                onClick={handleRealSpeechInput}
+                className={`px-3.5 sm:px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
+                  isRecording
+                    ? "bg-rose-500 text-white border-rose-400 animate-pulse shadow-lg shadow-rose-500/30"
+                    : "bg-slate-900 hover:bg-slate-800 text-rose-300 border-rose-500/40"
+                }`}
+                title="Click to speak German with your microphone"
+              >
+                <Mic className="w-4 h-4" />
+                <span>{isRecording ? "Finish" : "Speak"}</span>
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5"
+              >
+                <Send className="w-3.5 h-3.5" /> Send
+              </button>
+            </div>
           </form>
         </div>
 
