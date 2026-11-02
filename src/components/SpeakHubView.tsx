@@ -665,6 +665,7 @@ export default function SpeakHubView() {
               />
               <button
                 type="button"
+                data-testid="speak-mic-button"
                 onClick={toggleVoiceRecording}
                 className={`px-3.5 sm:px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
                   isRecording

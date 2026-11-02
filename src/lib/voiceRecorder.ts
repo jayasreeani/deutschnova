@@ -54,14 +54,24 @@ export class UniversalVoiceSession {
     }
 
     try {
-      // 1. Request microphone stream (KEEP IT OPEN during the entire recording)
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      // 1. Request microphone stream with automatic fallback for device compatibility
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (constraintErr) {
+        console.warn(
+          "Retrying getUserMedia with basic audio: true constraint:",
+          constraintErr
+        );
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+
       this.mediaStream = stream;
       this.recordedChunks = [];
       this.liveTranscript = "";
@@ -78,7 +88,7 @@ export class UniversalVoiceSession {
           const ctx = new AudioContextClass();
           this.audioContext = ctx;
           if (ctx.state === "suspended") {
-            await ctx.resume().catch(() => {});
+            ctx.resume().catch(() => {});
           }
           const source = ctx.createMediaStreamSource(stream);
           const analyser = ctx.createAnalyser();
