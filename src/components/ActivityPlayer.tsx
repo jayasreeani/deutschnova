@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   Volume2,
   CheckCircle2,
@@ -20,6 +20,8 @@ import {
   MessageSquare,
   Compass,
   MapPin,
+  Play,
+  Radio,
 } from "lucide-react";
 import {
   LearningDay,
@@ -29,6 +31,7 @@ import {
 } from "@/types/learning";
 import { useLearning } from "@/context/LearningContext";
 import WhyWasIWrongCard from "./WhyWasIWrongCard";
+import { UniversalVoiceSession } from "@/lib/voiceRecorder";
 
 interface ActivityPlayerProps {
   day: LearningDay;
@@ -97,7 +100,7 @@ export default function ActivityPlayer({
     Record<string, boolean>
   >({});
 
-  // Speaking state (Real browser SpeechRecognition, no fake timer, no fake pronunciation scores)
+  // Speaking state (Universal Voice Recorder with live waveform + real STT)
   const [speakingWordMatchRatio, setSpeakingWordMatchRatio] = useState<
     Record<string, string>
   >({});
@@ -109,8 +112,12 @@ export default function ActivityPlayer({
   const [typedPronunciationFallback, setTypedPronunciationFallback] = useState<
     Record<string, string>
   >({});
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const activeRecognitionRef = useRef<any>(null);
+  const [speakingVoiceNotes, setSpeakingVoiceNotes] = useState<
+    Record<string, string>
+  >({});
+  const [speakingAudioLevel, setSpeakingAudioLevel] = useState<number>(0);
+  const [speakingDuration, setSpeakingDuration] = useState<number>(0);
+  const speakingVoiceSessionRef = useRef<UniversalVoiceSession | null>(null);
 
   // AI Conversation / Real-Life Mission state (Dynamic /api/ai-mission)
   const [missionMode, setMissionMode] = useState<"coach" | "real_life">("coach");
@@ -122,6 +129,7 @@ export default function ActivityPlayer({
       feedback?: string;
       mistake?: DetectedMistake | null;
       requiresRetry?: boolean;
+      audioUrl?: string;
     }[]
   >([
     {
@@ -134,6 +142,26 @@ export default function ActivityPlayer({
   const [usedPromptIndexes, setUsedPromptIndexes] = useState<number[]>([]);
   const [turnIndex, setTurnIndex] = useState(0);
   const [isAiThinking, setIsAiThinking] = useState(false);
+  const [isMissionListening, setIsMissionListening] = useState(false);
+  const [missionAudioLevel, setMissionAudioLevel] = useState<number>(0);
+  const [missionRecordSeconds, setMissionRecordSeconds] = useState<number>(0);
+  const [missionPendingVoiceNote, setMissionPendingVoiceNote] = useState<{
+    audioUrl: string;
+    durationSeconds: number;
+  } | null>(null);
+  const missionVoiceSessionRef = useRef<UniversalVoiceSession | null>(null);
+
+  // Clean up any active voice recording session on unmount
+  useEffect(() => {
+    return () => {
+      if (speakingVoiceSessionRef.current) {
+        speakingVoiceSessionRef.current.cancel();
+      }
+      if (missionVoiceSessionRef.current) {
+        missionVoiceSessionRef.current.cancel();
+      }
+    };
+  }, []);
   const [activeCoachCorrection, setActiveCoachCorrection] = useState<{
     headline: string;
     mistake: DetectedMistake;
@@ -149,8 +177,6 @@ export default function ActivityPlayer({
   const [missionStrengths, setMissionStrengths] = useState<string[]>([]);
   const [missionCompleteData, setMissionCompleteData] =
     useState<MissionCompletionFeedback | null>(null);
-  const [isMissionListening, setIsMissionListening] = useState(false);
-  const liveMissionTranscriptRef = useRef<string>("");
 
   // Quiz state
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
@@ -1057,7 +1083,7 @@ export default function ActivityPlayer({
     );
   }
 
-  // STEP 6: SPEAK VIEW (Real Browser SpeechRecognition de-DE, no fake simulation, no fabricated pronunciation score)
+  // STEP 6: SPEAK VIEW (Universal Voice Recording with live waveform, real STT de-DE & voice note playback)
   if (activity.type === "speaking") {
     const computeWordMatchSummary = (target: string, spoken: string) => {
       const clean = (s: string) =>
@@ -1073,121 +1099,100 @@ export default function ActivityPlayer({
       return `${matches}/${targetWords.length} target words recognized`;
     };
 
-    const cancelActiveSpeech = () => {
-      try {
-        if (activeRecognitionRef.current) {
-          activeRecognitionRef.current.abort();
-          activeRecognitionRef.current = null;
-        }
-      } catch {
-        // ignore
-      }
+    const stopSpeakingPractice = async (promptId?: string) => {
+      if (!speakingVoiceSessionRef.current) return;
+      const session = speakingVoiceSessionRef.current;
+      const targetId = promptId || recordingId;
       setRecordingId(null);
-      setSpeechNotice("Speech recognition cancelled by learner.");
+      setSpeakingAudioLevel(0);
+      setSpeakingDuration(0);
+      const res = await session.stop();
+      speakingVoiceSessionRef.current = null;
+      if (res && targetId) {
+        if (res.audioUrl) {
+          setSpeakingVoiceNotes((prev) => ({
+            ...prev,
+            [targetId]: res.audioUrl,
+          }));
+        }
+        const text = res.transcript.trim();
+        if (text) {
+          setSpokenTranscript((prev) => ({
+            ...prev,
+            [targetId]: text,
+          }));
+          const targetItem = day.speaking.find((s) => s.id === targetId);
+          if (targetItem) {
+            const summary = computeWordMatchSummary(
+              targetItem.germanPhrase,
+              text
+            );
+            if (summary) {
+              setSpeakingWordMatchRatio((prev) => ({
+                ...prev,
+                [targetId]: summary,
+              }));
+            }
+          }
+        }
+      }
     };
 
-    const startSpeechPractice = (promptItem: {
+    const startSpeechPractice = async (promptItem: {
       id: string;
       germanPhrase: string;
     }) => {
       setSpeechNotice(null);
       if (recordingId === promptItem.id) {
-        cancelActiveSpeech();
+        await stopSpeakingPractice(promptItem.id);
         return;
       }
 
-      const SpeechRecognition =
-        typeof window !== "undefined"
-          ? (window as unknown as Record<string, unknown>).SpeechRecognition ||
-            (window as unknown as Record<string, unknown>)
-              .webkitSpeechRecognition
-          : null;
-
-      if (SpeechRecognition && typeof SpeechRecognition === "function") {
-        try {
-          if (activeRecognitionRef.current) {
-            try {
-              activeRecognitionRef.current.abort();
-            } catch {
-              // ignore
-            }
-          }
-          setRecordingId(promptItem.id);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const recognition: any = new (SpeechRecognition as any)();
-          activeRecognitionRef.current = recognition;
-          recognition.lang = "de-DE";
-          recognition.interimResults = true;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          recognition.onresult = (event: any) => {
-            let finalStr = "";
-            let interimStr = "";
-            for (let i = 0; i < event.results.length; ++i) {
-              const res = event.results[i];
-              if (res.isFinal) {
-                finalStr += res[0]?.transcript || "";
-              } else {
-                interimStr += res[0]?.transcript || "";
-              }
-            }
-            const transcript = (finalStr || interimStr).trim();
-            if (transcript) {
-              setSpokenTranscript((p) => ({
-                ...p,
-                [promptItem.id]: transcript,
-              }));
-            }
-            if (finalStr.trim()) {
-              setRecordingId(null);
-              activeRecognitionRef.current = null;
-              const matchSummary = computeWordMatchSummary(
-                promptItem.germanPhrase,
-                finalStr.trim()
-              );
-              if (matchSummary) {
-                setSpeakingWordMatchRatio((p) => ({
-                  ...p,
-                  [promptItem.id]: matchSummary,
-                }));
-              }
-            }
-          };
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          recognition.onerror = (err: any) => {
-            setRecordingId(null);
-            activeRecognitionRef.current = null;
-            const code = err?.error || "unavailable";
-            if (code === "not-allowed" || code === "service-not-allowed") {
-              setSpeechNotice(
-                "Microphone permission denied (not-allowed): Please allow microphone access in your browser address bar, or use the text fallback below."
-              );
-            } else if (code === "no-speech") {
-              setSpeechNotice(
-                "No German speech detected (no-speech): Try speaking again clearly or use the text fallback below."
-              );
-            } else if (code === "aborted") {
-              setSpeechNotice("Speech recognition was stopped.");
-            } else {
-              setSpeechNotice(
-                `SpeechRecognition error (${code}): Please retry or use the text fallback below.`
-              );
-            }
-          };
-          recognition.onend = () => {
-            setRecordingId(null);
-            activeRecognitionRef.current = null;
-          };
-          recognition.start();
-          return;
-        } catch {
-          setRecordingId(null);
-          activeRecognitionRef.current = null;
-        }
+      if (speakingVoiceSessionRef.current) {
+        speakingVoiceSessionRef.current.cancel();
+        speakingVoiceSessionRef.current = null;
       }
 
-      setSpeechNotice(
-        "Browser SpeechRecognition (de-DE) is not supported in this browser window. Listen to the native audio, repeat aloud, and use the text verification fallback below."
-      );
+      const session = new UniversalVoiceSession();
+      speakingVoiceSessionRef.current = session;
+      setRecordingId(promptItem.id);
+      setSpeakingAudioLevel(0);
+      setSpeakingDuration(0);
+
+      const started = await session.start({
+        onVolumeChange: (vol) => setSpeakingAudioLevel(vol),
+        onDurationChange: (sec) => setSpeakingDuration(sec),
+        onTranscriptUpdate: (text, isFinal) => {
+          setSpokenTranscript((prev) => ({
+            ...prev,
+            [promptItem.id]: text,
+          }));
+          if (isFinal) {
+            const summary = computeWordMatchSummary(
+              promptItem.germanPhrase,
+              text
+            );
+            if (summary) {
+              setSpeakingWordMatchRatio((prev) => ({
+                ...prev,
+                [promptItem.id]: summary,
+              }));
+            }
+          }
+        },
+        onError: (msg) => {
+          setRecordingId(null);
+          setSpeakingAudioLevel(0);
+          setSpeakingDuration(0);
+          setSpeechNotice(msg);
+        },
+      });
+
+      if (!started) {
+        setRecordingId(null);
+        setSpeakingAudioLevel(0);
+        setSpeakingDuration(0);
+      }
     };
 
     return (
@@ -1196,10 +1201,10 @@ export default function ActivityPlayer({
           <div>
             <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-400 bg-rose-500/10 px-3 py-1 rounded-full mb-1.5">
               <Mic className="w-3.5 h-3.5" /> Step {activity.order} of{" "}
-              {day.activities.length} • Speak Out Loud (Web Speech API de-DE)
+              {day.activities.length} • Speak Out Loud (Universal Voice Capture &amp; STT)
             </span>
             <h3 className="text-xl font-bold text-white">
-              Spoken Confidence &amp; German Speech Recognition
+              Spoken Confidence &amp; German Pronunciation Practice
             </h3>
           </div>
           <button
@@ -1214,10 +1219,8 @@ export default function ActivityPlayer({
         <div className="mb-4 p-3 rounded-xl bg-slate-950/90 border border-slate-800 text-xs text-slate-300 flex flex-wrap items-center justify-between gap-2">
           <div>
             <strong className="text-emerald-400">Voice Transparency:</strong>{" "}
-            Uses browser <code className="text-sky-300">SpeechRecognition (de-DE)</code>{" "}
-            for <strong>Speech-to-Text word recognition</strong> and{" "}
-            <code className="text-sky-300">speechSynthesis (de-DE)</code> for audio output.
-            Acoustic phoneme pronunciation scoring is not inferred from text alone.
+            Captures your voice via universal <code className="text-sky-300">MediaRecorder</code>, provides live volume visualizer, runs{" "}
+            <code className="text-sky-300">SpeechRecognition (de-DE)</code> when supported, and allows audio playback comparison against native German.
           </div>
         </div>
 
@@ -1261,23 +1264,57 @@ export default function ActivityPlayer({
                     >
                       <Volume2 className="w-4 h-4 text-emerald-400" /> Listen (de-DE)
                     </button>
+                    {speakingVoiceNotes[sp.id] && (
+                      <button
+                        onClick={() => {
+                          const audio = new Audio(speakingVoiceNotes[sp.id]);
+                          audio.play().catch(() => {});
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 text-xs font-bold flex items-center gap-1.5 transition"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" /> Play Your Voice
+                      </button>
+                    )}
                     <button
                       onClick={() => startSpeechPractice(sp)}
                       className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition ${
                         isRec
-                          ? "bg-rose-500 text-white animate-pulse"
+                          ? "bg-rose-500 text-white animate-pulse shadow-lg shadow-rose-500/30"
                           : "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40"
                       }`}
                     >
                       <Mic className="w-4 h-4" />
                       {isRec
-                        ? "Stop / Cancel Mic"
+                        ? `Recording Voice (0:${speakingDuration < 10 ? `0${speakingDuration}` : speakingDuration})... Tap to Stop`
                         : matchRatio
-                        ? "Speak Again (de-DE)"
+                        ? "Record Again"
                         : "Tap to Speak (de-DE)"}
                     </button>
                   </div>
                 </div>
+
+                {/* Live sound meter during recording */}
+                {isRec && (
+                  <div className="mt-3 p-3 rounded-xl bg-rose-950/60 border border-rose-500/50 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0" />
+                      <span className="font-extrabold text-rose-200 uppercase">
+                        Recording Voice — Speak German into microphone
+                      </span>
+                    </div>
+                    <div className="flex items-end gap-1 h-4 px-2 bg-slate-950/90 rounded border border-slate-800">
+                      {[0.3, 0.7, 1.0, 0.6, 0.9, 0.4].map((scale, i) => (
+                        <div
+                          key={i}
+                          className="w-1.5 rounded-full bg-rose-400 transition-all duration-75"
+                          style={{
+                            height: `${Math.max(4, Math.min(16, (speakingAudioLevel / 100) * 16 * scale + (speakingAudioLevel > 5 ? 2 : 1)))}px`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-3 pt-3 border-t border-slate-700/60 text-xs text-slate-300">
                   <strong className="text-amber-300">Pronunciation Focus Tip:</strong>{" "}
@@ -1364,13 +1401,15 @@ export default function ActivityPlayer({
 
     const sendLearnerTurnToMissionApi = async (
       learnerText: string,
-      promptIdx?: number
+      promptIdx?: number,
+      audioUrl?: string
     ) => {
       if (!learnerText.trim() || isAiThinking) return;
       const trimmed = learnerText.trim();
       setIsAiThinking(true);
       setActiveCoachCorrection(null);
       setActiveRecoverySupport(null);
+      setMissionPendingVoiceNote(null);
 
       try {
         const res = await fetch("/api/ai-mission", {
@@ -1427,6 +1466,7 @@ export default function ActivityPlayer({
             {
               sender: "user",
               german: trimmed,
+              audioUrl,
               feedback: `${data.coachHeadline || "Fast richtig!"} → ${detected.correctSentence}`,
               mistake: detected,
               requiresRetry: true,
@@ -1459,6 +1499,7 @@ export default function ActivityPlayer({
           {
             sender: "user",
             german: trimmed,
+            audioUrl,
             feedback:
               missionMode === "coach"
                 ? data.minorCoachingTip || data.positiveNote
@@ -1558,141 +1599,70 @@ export default function ActivityPlayer({
       await sendLearnerTurnToMissionApi(text);
     };
 
-    const stopAndSendMissionVoiceInput = () => {
-      const toSend = (liveMissionTranscriptRef.current || customInput).trim();
-      if (activeRecognitionRef.current) {
-        try {
-          activeRecognitionRef.current.stop();
-        } catch {
-          // ignore
-        }
-      }
+    const stopAndProcessMissionVoice = async () => {
+      if (!missionVoiceSessionRef.current) return;
+      const session = missionVoiceSessionRef.current;
       setIsMissionListening(false);
-      activeRecognitionRef.current = null;
-      if (toSend) {
+      setMissionAudioLevel(0);
+      setMissionRecordSeconds(0);
+      const result = await session.stop();
+      missionVoiceSessionRef.current = null;
+      if (!result) return;
+
+      const transcript = (result.transcript || customInput).trim();
+      if (transcript) {
         setCustomInput("");
-        liveMissionTranscriptRef.current = "";
-        sendLearnerTurnToMissionApi(toSend);
+        sendLearnerTurnToMissionApi(transcript, undefined, result.audioUrl);
+      } else if (result.audioUrl) {
+        // Voice recording captured audio, but browser STT produced no text (e.g. mobile Safari / quiet room)
+        setMissionPendingVoiceNote({
+          audioUrl: result.audioUrl,
+          durationSeconds: result.durationSeconds,
+        });
       }
     };
 
     const startMissionVoiceInput = async () => {
       setSpeechNotice(null);
+      setMissionPendingVoiceNote(null);
       if (isMissionListening) {
-        stopAndSendMissionVoiceInput();
+        await stopAndProcessMissionVoice();
         return;
       }
 
-      const SpeechRecognition =
-        typeof window !== "undefined"
-          ? (window as unknown as Record<string, unknown>).SpeechRecognition ||
-            (window as unknown as Record<string, unknown>)
-              .webkitSpeechRecognition
-          : null;
+      const session = new UniversalVoiceSession();
+      missionVoiceSessionRef.current = session;
+      setIsMissionListening(true);
+      setMissionAudioLevel(0);
+      setMissionRecordSeconds(0);
 
-      if (!SpeechRecognition || typeof SpeechRecognition !== "function") {
-        setSpeechNotice(
-          "Speech recognition is not supported in this browser window. Please use Google Chrome, Microsoft Edge, or Safari, or type your response below."
-        );
-        return;
-      }
-
-      // Explicitly check for mic permission if getUserMedia is available
-      if (
-        navigator.mediaDevices &&
-        typeof navigator.mediaDevices.getUserMedia === "function"
-      ) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-          });
-          stream.getTracks().forEach((t) => t.stop());
-        } catch (err: any) {
-          if (
-            err?.name === "NotAllowedError" ||
-            err?.name === "PermissionDeniedError"
-          ) {
-            setSpeechNotice(
-              "Microphone access blocked: Please click the lock or camera icon in your browser address bar to allow microphone access, then try again."
-            );
-            return;
-          }
-        }
-      }
-
-      try {
-        setIsMissionListening(true);
-        liveMissionTranscriptRef.current = "";
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const recognition: any = new (SpeechRecognition as any)();
-        activeRecognitionRef.current = recognition;
-        recognition.lang = "de-DE";
-        recognition.interimResults = true;
-        recognition.maxAlternatives = 1;
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        recognition.onresult = (event: any) => {
-          let finalStr = "";
-          let interimStr = "";
-          for (let i = 0; i < event.results.length; ++i) {
-            const res = event.results[i];
-            if (res.isFinal) {
-              finalStr += res[0]?.transcript || "";
-            } else {
-              interimStr += res[0]?.transcript || "";
-            }
-          }
-          const textSpoken = (finalStr || interimStr).trim();
-          if (textSpoken) {
-            liveMissionTranscriptRef.current = textSpoken;
-            setCustomInput(textSpoken);
-          }
-        };
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        recognition.onerror = (err: any) => {
+      const started = await session.start({
+        onVolumeChange: (vol) => setMissionAudioLevel(vol),
+        onDurationChange: (sec) => setMissionRecordSeconds(sec),
+        onTranscriptUpdate: (text) => setCustomInput(text),
+        onError: (msg) => {
           setIsMissionListening(false);
-          activeRecognitionRef.current = null;
-          const code = err?.error || "unavailable";
-          if (code === "not-allowed" || code === "service-not-allowed") {
-            setSpeechNotice(
-              "Microphone access blocked: Please click the lock icon in your browser address bar to allow microphone access."
-            );
-          } else if (code === "no-speech") {
-            setSpeechNotice(
-              "No speech detected: Please speak closer to your microphone, or type your response below."
-            );
-          } else if (code === "network") {
-            setSpeechNotice(
-              "Speech recognition network error: Cloud speech services may be temporarily unreachable or blocked. You can type directly below."
-            );
-          } else if (code !== "aborted") {
-            setSpeechNotice(
-              `Speech recognition notice (${code}): Please try speaking again or type your message.`
-            );
-          }
-        };
+          setMissionAudioLevel(0);
+          setMissionRecordSeconds(0);
+          setSpeechNotice(msg);
+        },
+      });
 
-        recognition.onend = () => {
-          setIsMissionListening(false);
-          activeRecognitionRef.current = null;
-          const finalRecorded = liveMissionTranscriptRef.current.trim();
-          if (finalRecorded) {
-            setCustomInput("");
-            liveMissionTranscriptRef.current = "";
-            sendLearnerTurnToMissionApi(finalRecorded);
-          }
-        };
-
-        recognition.start();
-      } catch (e: any) {
+      if (!started) {
         setIsMissionListening(false);
-        activeRecognitionRef.current = null;
-        setSpeechNotice(
-          "Could not start microphone: " +
-            (e?.message || "Please try typing below.")
-        );
+        setMissionAudioLevel(0);
+        setMissionRecordSeconds(0);
       }
+    };
+
+    const cancelMissionVoiceInput = () => {
+      if (missionVoiceSessionRef.current) {
+        missionVoiceSessionRef.current.cancel();
+        missionVoiceSessionRef.current = null;
+      }
+      setIsMissionListening(false);
+      setMissionAudioLevel(0);
+      setMissionRecordSeconds(0);
     };
 
     const resetMissionConversation = () => {
@@ -1839,6 +1809,21 @@ export default function ActivityPlayer({
                 <p className="text-sm font-semibold">{msg.german}</p>
                 {msg.english && (
                   <p className="text-xs text-slate-400 mt-1">{msg.english}</p>
+                )}
+                {msg.audioUrl && (
+                  <div className="mt-2.5 flex items-center gap-2 bg-slate-900/90 border border-teal-500/40 rounded-xl px-3 py-1.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const audio = new Audio(msg.audioUrl);
+                        audio.play().catch(() => {});
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 font-bold flex items-center gap-1.5 transition text-[11px]"
+                    >
+                      <Play className="w-3 h-3 fill-current" /> Play Voice Note
+                    </button>
+                    <span className="text-[11px] text-slate-400">🎙️ Your Recording</span>
+                  </div>
                 )}
               </div>
               {msg.feedback && (
@@ -2128,20 +2113,115 @@ export default function ActivityPlayer({
             </div>
           )}
 
+          {/* LIVE DYNAMIC AUDIO RECORDER WAVEFORM & TIMER */}
           {isMissionListening && (
-            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-xs text-rose-300 animate-pulse">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
-              <span className="font-bold shrink-0">Listening in German (de-DE)...</span>
-              <span className="text-slate-200 italic truncate max-w-xs sm:max-w-md">
-                {customInput ? `„${customInput}“` : "Speak now into your microphone"}
-              </span>
-              <button
-                type="button"
-                onClick={stopAndSendMissionVoiceInput}
-                className="ml-auto px-2.5 py-1 rounded-lg bg-rose-500 text-white font-extrabold text-xs shadow hover:bg-rose-600 shrink-0"
-              >
-                Finish &amp; Send
-              </button>
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-950/80 via-slate-900 to-slate-950 border-2 border-rose-500/60 text-xs text-rose-200 shadow-xl space-y-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping shrink-0" />
+                  <span className="font-extrabold text-white text-xs uppercase tracking-wider">
+                    Recording Voice (0:{missionRecordSeconds < 10 ? `0${missionRecordSeconds}` : missionRecordSeconds})
+                  </span>
+                </div>
+                {/* Dynamic audio equalizer waveform reacting to user volume */}
+                <div className="flex items-end gap-1 h-5 px-2 bg-slate-950/90 rounded-lg border border-slate-800">
+                  {[0.3, 0.7, 1.0, 0.6, 0.9, 0.4].map((scale, i) => (
+                    <div
+                      key={i}
+                      className="w-1.5 rounded-full bg-rose-400 transition-all duration-75"
+                      style={{
+                        height: `${Math.max(4, Math.min(20, (missionAudioLevel / 100) * 20 * scale + (missionAudioLevel > 5 ? 3 : 1)))}px`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-slate-300 text-xs bg-slate-950/70 rounded-xl p-2.5 border border-slate-800 flex items-center justify-between gap-2">
+                <span className="italic truncate">
+                  {customInput ? `„${customInput}“` : "Speak German now — microphone is actively capturing your voice..."}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={cancelMissionVoiceInput}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={stopAndProcessMissionVoice}
+                  className="px-4 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-extrabold text-xs shadow-lg shadow-rose-500/40 flex items-center gap-1.5 transition"
+                >
+                  Finish &amp; Send Voice
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* QUICK CONFIRM FOR RECORDED VOICE NOTE (When STT produced no text or on mobile Safari) */}
+          {missionPendingVoiceNote && (
+            <div className="p-4 rounded-2xl bg-teal-950/60 border-2 border-teal-500/50 space-y-3 shadow-xl">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-teal-400 animate-pulse" />
+                  <span className="font-extrabold text-white text-xs uppercase tracking-wider">
+                    Voice Note Recorded ({missionPendingVoiceNote.durationSeconds}s)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const audio = new Audio(missionPendingVoiceNote.audioUrl);
+                    audio.play().catch(() => {});
+                  }}
+                  className="px-3 py-1 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 text-xs font-bold flex items-center gap-1.5 transition"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" /> Listen to Audio
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-300">
+                We captured your voice recording! Tap what you spoke or send it directly:
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                {ai.suggestedPrompts.slice(0, 3).map((sp, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      const url = missionPendingVoiceNote.audioUrl;
+                      setMissionPendingVoiceNote(null);
+                      sendLearnerTurnToMissionApi(sp.german, idx, url);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-teal-500/30 text-xs text-teal-200 font-semibold transition text-left"
+                  >
+                    „{sp.german}“
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = missionPendingVoiceNote.audioUrl;
+                    setMissionPendingVoiceNote(null);
+                    sendLearnerTurnToMissionApi("Ich habe eine Sprachnachricht gesendet.", undefined, url);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 text-xs font-extrabold shadow-lg transition"
+                >
+                  Send Voice Note Directly
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMissionPendingVoiceNote(null)}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-semibold transition"
+                >
+                  Discard
+                </button>
+              </div>
             </div>
           )}
 

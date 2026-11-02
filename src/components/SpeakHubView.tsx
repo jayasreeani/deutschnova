@@ -11,10 +11,13 @@ import {
   MessageSquare,
   MapPin,
   RotateCcw,
+  Play,
+  Radio,
 } from "lucide-react";
 import { useLearning } from "@/context/LearningContext";
 import { speakGerman } from "./ActivityPlayer";
 import { DetectedMistake } from "@/types/learning";
+import { UniversalVoiceSession } from "@/lib/voiceRecorder";
 
 export default function SpeakHubView() {
   const { plan, recordLearnerMistake } = useLearning();
@@ -42,6 +45,7 @@ export default function SpeakHubView() {
       german: string;
       english?: string;
       feedback?: string;
+      audioUrl?: string;
     }[]
   >([
     {
@@ -53,11 +57,34 @@ export default function SpeakHubView() {
   const [usedStages, setUsedStages] = useState<number[]>([]);
   const [customText, setCustomText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [pendingVoiceNote, setPendingVoiceNote] = useState<{
+    audioUrl: string;
+    durationSeconds: number;
+  } | null>(null);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+
+  const voiceSessionRef = useRef<UniversalVoiceSession | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (voiceSessionRef.current) {
+        voiceSessionRef.current.cancel();
+      }
+    };
+  }, []);
 
   const handleSelectScenarioDay = (dayNum: number) => {
     const target = austriaDays.find((d) => d.dayNumber === dayNum);
     if (!target) return;
+    if (voiceSessionRef.current) {
+      voiceSessionRef.current.cancel();
+      setIsRecording(false);
+      setAudioLevel(0);
+      setRecordingSeconds(0);
+    }
+    setPendingVoiceNote(null);
     setSelectedDayNum(dayNum);
     setUsedStages([]);
     setTurnIndex(0);
@@ -71,9 +98,14 @@ export default function SpeakHubView() {
     ]);
   };
 
-  const sendToMissionBackend = async (text: string, stageIdx?: number) => {
+  const sendToMissionBackend = async (
+    text: string,
+    stageIdx?: number,
+    audioUrl?: string
+  ) => {
     if (!text.trim()) return;
     setActiveCoachCard(null);
+    setPendingVoiceNote(null);
     try {
       const res = await fetch("/api/ai-mission", {
         method: "POST",
@@ -98,6 +130,7 @@ export default function SpeakHubView() {
           {
             sender: "user",
             german: text.trim(),
+            audioUrl,
             feedback: `${data.coachHeadline || "Fast richtig!"} → ${detected.correctSentence}`,
           },
         ]);
@@ -118,6 +151,7 @@ export default function SpeakHubView() {
         {
           sender: "user",
           german: text.trim(),
+          audioUrl,
           feedback: mode === "coach" ? data.positiveNote : undefined,
         },
         {
@@ -138,154 +172,70 @@ export default function SpeakHubView() {
     sendToMissionBackend(prompt.german, idx);
   };
 
-  const recognitionRef = useRef<any>(null);
-  const liveTranscriptRef = useRef<string>("");
-
-  useEffect(() => {
-    return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.abort();
-        } catch {
-          // ignore
-        }
-      }
-    };
-  }, []);
-
-  const stopAndSendSpeech = () => {
-    const toSend = (liveTranscriptRef.current || customText).trim();
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {
-        // ignore
-      }
-    }
+  const stopAndProcessVoice = async () => {
+    if (!voiceSessionRef.current) return;
+    const session = voiceSessionRef.current;
     setIsRecording(false);
-    if (toSend) {
+    setAudioLevel(0);
+    setRecordingSeconds(0);
+    const result = await session.stop();
+    if (!result) return;
+
+    const transcript = (result.transcript || customText).trim();
+    if (transcript) {
       setCustomText("");
-      liveTranscriptRef.current = "";
-      sendToMissionBackend(toSend);
+      sendToMissionBackend(transcript, undefined, result.audioUrl);
+    } else if (result.audioUrl) {
+      // Voice recording captured audio, but browser STT did not produce text (e.g. mobile Safari / quiet room)
+      setPendingVoiceNote({
+        audioUrl: result.audioUrl,
+        durationSeconds: result.durationSeconds,
+      });
     }
   };
 
-  const handleRealSpeechInput = async () => {
+  const toggleVoiceRecording = async () => {
     setVoiceNotice(null);
+    setPendingVoiceNote(null);
+
     if (isRecording) {
-      stopAndSendSpeech();
+      await stopAndProcessVoice();
       return;
     }
 
-    const SpeechRecognition =
-      typeof window !== "undefined"
-        ? (window as unknown as Record<string, unknown>).SpeechRecognition ||
-          (window as unknown as Record<string, unknown>).webkitSpeechRecognition
-        : null;
+    const session = new UniversalVoiceSession();
+    voiceSessionRef.current = session;
+    setIsRecording(true);
+    setAudioLevel(0);
+    setRecordingSeconds(0);
 
-    if (!SpeechRecognition || typeof SpeechRecognition !== "function") {
-      setVoiceNotice(
-        "Speech recognition is not supported in this browser. Please use Google Chrome, Microsoft Edge, or Safari, or type your message below."
-      );
-      return;
-    }
-
-    // Explicitly check for mic permission if getUserMedia is available
-    if (
-      navigator.mediaDevices &&
-      typeof navigator.mediaDevices.getUserMedia === "function"
-    ) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        stream.getTracks().forEach((t) => t.stop());
-      } catch (err: any) {
-        if (
-          err?.name === "NotAllowedError" ||
-          err?.name === "PermissionDeniedError"
-        ) {
-          setVoiceNotice(
-            "Microphone access blocked: Please click the lock or camera icon in your browser address bar to allow microphone access, then try again."
-          );
-          return;
-        }
-      }
-    }
-
-    try {
-      setIsRecording(true);
-      liveTranscriptRef.current = "";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const recognition: any = new (SpeechRecognition as any)();
-      recognitionRef.current = recognition;
-      recognition.lang = "de-DE";
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      recognition.onresult = (event: any) => {
-        let finalStr = "";
-        let interimStr = "";
-        for (let i = 0; i < event.results.length; ++i) {
-          const res = event.results[i];
-          if (res.isFinal) {
-            finalStr += res[0]?.transcript || "";
-          } else {
-            interimStr += res[0]?.transcript || "";
-          }
-        }
-        const textSpoken = (finalStr || interimStr).trim();
-        if (textSpoken) {
-          liveTranscriptRef.current = textSpoken;
-          setCustomText(textSpoken);
-        }
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      recognition.onerror = (err: any) => {
+    const started = await session.start({
+      onVolumeChange: (vol) => setAudioLevel(vol),
+      onDurationChange: (sec) => setRecordingSeconds(sec),
+      onTranscriptUpdate: (text) => setCustomText(text),
+      onError: (msg) => {
         setIsRecording(false);
-        recognitionRef.current = null;
-        const errType = err?.error || "unknown";
-        if (errType === "not-allowed" || errType === "service-not-allowed") {
-          setVoiceNotice(
-            "Microphone access blocked: Click the lock icon in your browser address bar to allow microphone access."
-          );
-        } else if (errType === "no-speech") {
-          setVoiceNotice(
-            "No speech detected: Speak closer to your microphone or type your response below."
-          );
-        } else if (errType === "network") {
-          setVoiceNotice(
-            "Speech recognition network error: Cloud speech services may be temporarily unavailable or blocked. You can type directly below."
-          );
-        } else if (errType !== "aborted") {
-          setVoiceNotice(
-            `Speech recognition notice (${errType}): Please try speaking again or type your message.`
-          );
-        }
-      };
+        setAudioLevel(0);
+        setRecordingSeconds(0);
+        setVoiceNotice(msg);
+      },
+    });
 
-      recognition.onend = () => {
-        setIsRecording(false);
-        recognitionRef.current = null;
-        const finalRecorded = liveTranscriptRef.current.trim();
-        if (finalRecorded) {
-          setCustomText("");
-          liveTranscriptRef.current = "";
-          sendToMissionBackend(finalRecorded);
-        }
-      };
-
-      recognition.start();
-    } catch (e: any) {
+    if (!started) {
       setIsRecording(false);
-      recognitionRef.current = null;
-      setVoiceNotice(
-        "Could not start microphone: " +
-          (e?.message || "Please try typing below.")
-      );
+      setAudioLevel(0);
+      setRecordingSeconds(0);
     }
+  };
+
+  const cancelVoiceRecording = () => {
+    if (voiceSessionRef.current) {
+      voiceSessionRef.current.cancel();
+      voiceSessionRef.current = null;
+    }
+    setIsRecording(false);
+    setAudioLevel(0);
+    setRecordingSeconds(0);
   };
 
   const handleCustomSend = (e: React.FormEvent) => {
@@ -445,6 +395,21 @@ export default function SpeakHubView() {
                   {m.english && (
                     <p className="text-xs text-slate-400 mt-1">{m.english}</p>
                   )}
+                  {m.audioUrl && (
+                    <div className="mt-2.5 flex items-center gap-2 bg-slate-900/90 border border-teal-500/40 rounded-xl px-3 py-1.5 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const audio = new Audio(m.audioUrl);
+                          audio.play().catch(() => {});
+                        }}
+                        className="px-2 py-0.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 font-bold flex items-center gap-1.5 transition text-[11px]"
+                      >
+                        <Play className="w-3 h-3 fill-current" /> Play Voice Note
+                      </button>
+                      <span className="text-[11px] text-slate-400">🎙️ Your Recording</span>
+                    </div>
+                  )}
                 </div>
                 {m.feedback && (
                   <span className="text-xs text-emerald-400 mt-1 px-2">
@@ -513,15 +478,16 @@ export default function SpeakHubView() {
                   Test: „Ich möchte eine Kaffee.“
                 </button>
                 <button
-                  onClick={handleRealSpeechInput}
+                  type="button"
+                  onClick={toggleVoiceRecording}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
                     isRecording
-                      ? "bg-rose-500 text-white animate-pulse"
+                      ? "bg-rose-500 text-white animate-pulse shadow-lg shadow-rose-500/30"
                       : "bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30"
                   }`}
                 >
                   <Mic className="w-3.5 h-3.5" />
-                  {isRecording ? "Listening (de-DE)..." : "Speak via Mic"}
+                  {isRecording ? "Recording Voice..." : "Speak via Mic"}
                 </button>
               </div>
             </div>
@@ -577,20 +543,115 @@ export default function SpeakHubView() {
               </div>
             )}
 
+            {/* LIVE DYNAMIC AUDIO RECORDER WAVEFORM & TIMER */}
             {isRecording && (
-              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-xs text-rose-300 animate-pulse">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0"></span>
-                <span className="font-bold shrink-0">Listening in German (de-DE)...</span>
-                <span className="text-slate-200 italic truncate max-w-xs sm:max-w-md">
-                  {customText ? `„${customText}“` : "Speak now into your microphone"}
-                </span>
-                <button
-                  type="button"
-                  onClick={stopAndSendSpeech}
-                  className="ml-auto px-2.5 py-1 rounded-lg bg-rose-500 text-white font-extrabold text-xs shadow hover:bg-rose-600 shrink-0"
-                >
-                  Finish &amp; Send
-                </button>
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-950/80 via-slate-900 to-slate-950 border-2 border-rose-500/60 text-xs text-rose-200 shadow-xl space-y-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping shrink-0" />
+                    <span className="font-extrabold text-white text-xs uppercase tracking-wider">
+                      Recording Voice (0:{recordingSeconds < 10 ? `0${recordingSeconds}` : recordingSeconds})
+                    </span>
+                  </div>
+                  {/* Dynamic audio equalizer waveform reacting to user's real volume */}
+                  <div className="flex items-end gap-1 h-5 px-2 bg-slate-950/90 rounded-lg border border-slate-800">
+                    {[0.3, 0.7, 1.0, 0.6, 0.9, 0.4].map((scale, i) => (
+                      <div
+                        key={i}
+                        className="w-1.5 rounded-full bg-rose-400 transition-all duration-75"
+                        style={{
+                          height: `${Math.max(4, Math.min(20, (audioLevel / 100) * 20 * scale + (audioLevel > 5 ? 3 : 1)))}px`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="text-slate-300 text-xs bg-slate-950/70 rounded-xl p-2.5 border border-slate-800 flex items-center justify-between gap-2">
+                  <span className="italic truncate">
+                    {customText ? `„${customText}“` : "Speak German now — microphone is actively capturing your voice..."}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={cancelVoiceRecording}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopAndProcessVoice}
+                    className="px-4 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-extrabold text-xs shadow-lg shadow-rose-500/40 flex items-center gap-1.5 transition"
+                  >
+                    Finish &amp; Send Voice
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* QUICK CONFIRM FOR RECORDED VOICE NOTE (When STT produced no text or on mobile Safari) */}
+            {pendingVoiceNote && (
+              <div className="p-4 rounded-2xl bg-teal-950/60 border-2 border-teal-500/50 space-y-3 shadow-xl">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-teal-400 animate-pulse" />
+                    <span className="font-extrabold text-white text-xs uppercase tracking-wider">
+                      Voice Note Recorded ({pendingVoiceNote.durationSeconds}s)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const audio = new Audio(pendingVoiceNote.audioUrl);
+                      audio.play().catch(() => {});
+                    }}
+                    className="px-3 py-1 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 text-xs font-bold flex items-center gap-1.5 transition"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" /> Listen to Audio
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-300">
+                  We captured your voice recording! Tap what you spoke or send it directly:
+                </p>
+
+                <div className="flex flex-wrap gap-2">
+                  {scenario.suggestedPrompts.slice(0, 3).map((sp, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        const url = pendingVoiceNote.audioUrl;
+                        setPendingVoiceNote(null);
+                        sendToMissionBackend(sp.german, idx, url);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-teal-500/30 text-xs text-teal-200 font-semibold transition text-left"
+                    >
+                      „{sp.german}“
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = pendingVoiceNote.audioUrl;
+                      setPendingVoiceNote(null);
+                      sendToMissionBackend("Ich habe eine Sprachnachricht gesendet.", undefined, url);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 text-xs font-extrabold shadow-lg transition"
+                  >
+                    Send Voice Note Directly
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingVoiceNote(null)}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-semibold transition"
+                  >
+                    Discard
+                  </button>
+                </div>
               </div>
             )}
 
@@ -604,7 +665,7 @@ export default function SpeakHubView() {
               />
               <button
                 type="button"
-                onClick={handleRealSpeechInput}
+                onClick={toggleVoiceRecording}
                 className={`px-3.5 sm:px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
                   isRecording
                     ? "bg-rose-500 text-white border-rose-400 animate-pulse shadow-lg shadow-rose-500/30"
