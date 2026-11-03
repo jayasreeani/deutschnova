@@ -30,6 +30,9 @@ export default function SpeakHubView() {
   const [audioLanguage, setAudioLanguage] = useState<
     "english" | "bilingual" | "german"
   >("english");
+  const [displayLanguage, setDisplayLanguage] = useState<
+    "english" | "german"
+  >("english");
   const [turnIndex, setTurnIndex] = useState(0);
   const [activeCoachCard, setActiveCoachCard] = useState<{
     headline: string;
@@ -412,6 +415,35 @@ export default function SpeakHubView() {
                 </button>
               </div>
 
+              {/* Display Language Selector */}
+              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
+                <span className="text-[10px] uppercase font-bold text-slate-400 px-1">Text:</span>
+                <button
+                  type="button"
+                  onClick={() => setDisplayLanguage("english")}
+                  className={`px-2 py-0.5 rounded-lg text-xs font-bold transition ${
+                    displayLanguage === "english"
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                  title="Show English as the main response text"
+                >
+                  🇬🇧 English First
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisplayLanguage("german")}
+                  className={`px-2 py-0.5 rounded-lg text-xs font-bold transition ${
+                    displayLanguage === "german"
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                  title="Show German as the main response text"
+                >
+                  🇩🇪 German First
+                </button>
+              </div>
+
               <button
                 onClick={() => {
                   if (audioLanguage === "english" && scenario.openingMessageEn) {
@@ -487,14 +519,27 @@ export default function SpeakHubView() {
                     )}
                   </div>
 
-                  <p className="text-sm font-semibold">{m.german}</p>
-
-                  {m.english && (
-                    <div className="mt-2.5 p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 text-xs">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block mb-0.5">
-                        English Translation:
-                      </span>
-                      <p className="text-slate-200 text-xs sm:text-sm font-medium">{m.english}</p>
+                  {displayLanguage === "english" && m.english ? (
+                    <div>
+                      <p className="text-sm font-bold text-white">{m.english}</p>
+                      <div className="mt-2 p-2 rounded-xl bg-slate-900/90 border border-emerald-500/30 text-xs text-emerald-300">
+                        <span className="text-[10px] font-bold uppercase tracking-wider block mb-0.5 text-emerald-400">
+                          🇩🇪 German Phrasing:
+                        </span>
+                        <p className="font-semibold text-slate-100">{m.german}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-sm font-semibold">{m.german}</p>
+                      {m.english && (
+                        <div className="mt-2.5 p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 text-xs">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block mb-0.5">
+                            English Translation:
+                          </span>
+                          <p className="text-slate-200 text-xs sm:text-sm font-medium">{m.english}</p>
+                        </div>
+                      )}
                     </div>
                   )}
 

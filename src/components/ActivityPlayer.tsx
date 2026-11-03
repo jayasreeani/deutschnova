@@ -184,6 +184,9 @@ export default function ActivityPlayer({
   const [missionAudioLanguage, setMissionAudioLanguage] = useState<
     "english" | "bilingual" | "german"
   >("english");
+  const [missionDisplayLanguage, setMissionDisplayLanguage] = useState<
+    "english" | "german"
+  >("english");
   const [chatHistory, setChatHistory] = useState<
     {
       sender: "ai" | "user";
@@ -1891,6 +1894,34 @@ export default function ActivityPlayer({
                 🇩🇪 German
               </button>
             </div>
+            {/* Display Language Selector */}
+            <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
+              <span className="text-[10px] uppercase font-bold text-slate-400 px-1">Text:</span>
+              <button
+                type="button"
+                onClick={() => setMissionDisplayLanguage("english")}
+                className={`px-2 py-0.5 rounded-lg text-xs font-bold transition ${
+                  missionDisplayLanguage === "english"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="Show English as the main response text"
+              >
+                🇬🇧 English First
+              </button>
+              <button
+                type="button"
+                onClick={() => setMissionDisplayLanguage("german")}
+                className={`px-2 py-0.5 rounded-lg text-xs font-bold transition ${
+                  missionDisplayLanguage === "german"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+                title="Show German as the main response text"
+              >
+                🇩🇪 German First
+              </button>
+            </div>
             <button
               type="button"
               onClick={resetMissionConversation}
@@ -1954,13 +1985,28 @@ export default function ActivityPlayer({
                     </button>
                   )}
                 </div>
-                <p className="text-sm font-semibold">{msg.german}</p>
-                {msg.english && (
-                  <div className="mt-2.5 p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 text-xs">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block mb-0.5">
-                      English Translation:
-                    </span>
-                    <p className="text-slate-200 text-xs sm:text-sm font-medium">{msg.english}</p>
+
+                {missionDisplayLanguage === "english" && msg.english ? (
+                  <div>
+                    <p className="text-sm font-bold text-white">{msg.english}</p>
+                    <div className="mt-2 p-2 rounded-xl bg-slate-900/90 border border-emerald-500/30 text-xs text-emerald-300">
+                      <span className="text-[10px] font-bold uppercase tracking-wider block mb-0.5 text-emerald-400">
+                        🇩🇪 German Phrasing:
+                      </span>
+                      <p className="font-semibold text-slate-100">{msg.german}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm font-semibold">{msg.german}</p>
+                    {msg.english && (
+                      <div className="mt-2.5 p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 text-xs">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block mb-0.5">
+                          English Translation:
+                        </span>
+                        <p className="text-slate-200 text-xs sm:text-sm font-medium">{msg.english}</p>
+                      </div>
+                    )}
                   </div>
                 )}
                 {msg.audioUrl && (
