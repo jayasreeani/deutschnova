@@ -29,3 +29,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scratch and local test store
+scratch/
+prisma/deutschnova_store.json

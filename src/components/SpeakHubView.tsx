@@ -13,9 +13,13 @@ import {
   RotateCcw,
   Play,
   Radio,
+  Settings,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useLearning } from "@/context/LearningContext";
-import { speakGerman, speakEnglish, speakBilingual } from "./ActivityPlayer";
+import { speakGerman, speakEnglish, speakBilingual, germanSpeechEngine } from "./ActivityPlayer";
 import { DetectedMistake } from "@/types/learning";
 import { UniversalVoiceSession } from "@/lib/voiceRecorder";
 
@@ -34,6 +38,8 @@ export default function SpeakHubView() {
     "english" | "german"
   >("english");
   const [turnIndex, setTurnIndex] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showExpressions, setShowExpressions] = useState(false);
   const [activeCoachCard, setActiveCoachCard] = useState<{
     headline: string;
     mistake: DetectedMistake;
@@ -70,8 +76,19 @@ export default function SpeakHubView() {
     durationSeconds: number;
   } | null>(null);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  const [germanVoices, setGermanVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>("");
 
   const voiceSessionRef = useRef<UniversalVoiceSession | null>(null);
+
+  useEffect(() => {
+    germanSpeechEngine.ensureVoicesLoaded().then(() => {
+      const gVoices = germanSpeechEngine.getGermanVoices();
+      setGermanVoices(gVoices);
+      const best = germanSpeechEngine.getBestGermanVoice();
+      if (best) setSelectedVoiceURI(best.voiceURI);
+    });
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -270,33 +287,250 @@ export default function SpeakHubView() {
     sendToMissionBackend(text);
   };
 
+  const getScenarioEmoji = (roleplayPartner: string, setting: string) => {
+    const text = (roleplayPartner + " " + setting).toLowerCase();
+    if (text.includes("barista") || text.includes("café") || text.includes("coffee")) return "☕";
+    if (text.includes("bakery") || text.includes("bäcker") || text.includes("bread")) return "🥐";
+    if (text.includes("train") || text.includes("conductor") || text.includes("station") || text.includes("bahn")) return "🚆";
+    if (text.includes("doctor") || text.includes("arzt") || text.includes("apotheke")) return "👨‍⚕️";
+    if (text.includes("student") || text.includes("uni")) return "🎓";
+    if (text.includes("waiter") || text.includes("restaurant") || text.includes("essen")) return "🍽️";
+    if (text.includes("direction") || text.includes("street") || text.includes("weg")) return "🗺️";
+    return "🗣️";
+  };
+
   return (
     <div className="space-y-6 pb-8">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-br from-slate-900 via-teal-950/40 to-slate-900 border border-teal-500/40 rounded-3xl p-5 sm:p-7 shadow-xl">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-teal-300 bg-teal-500/15 border border-teal-500/30 px-3 py-1 rounded-full">
-            <Mic className="w-3.5 h-3.5" /> AI German Real-Life Readiness Coach
-          </span>
-          <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full">
-            Speaking Score: {plan.speakingProgress.overallScore}%
-          </span>
-        </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-          Speak &amp; Real-Life Mission Simulator
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl">
-          Move from learning German to confidently using German in real-life
-          situations across Austria. Practice any of your 7 &ldquo;My First
-          Week in Austria&rdquo; missions or take on the 5-stage{" "}
-          <strong className="text-amber-300">
-            &ldquo;A Day in Vienna&rdquo;
-          </strong>{" "}
-          challenge!
-        </p>
+      {/* ROLEPLAY CONVERSATION PARTNER HEADER */}
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3.5">
+            <div className="w-13 h-13 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center text-3xl shadow-xs">
+              {getScenarioEmoji(scenario.roleplayPartner, scenario.setting)}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-black text-slate-900">{scenario.roleplayPartner}</h2>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">
+                  ● Patient Native Speaker • Vienna
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+                {scenario.setting} • {scenario.title}
+              </p>
+            </div>
+          </div>
 
-        {/* 7-Day Austria Mission Selector Pills */}
-        <div className="flex overflow-x-auto gap-2 pt-4 pb-1">
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:inline-flex px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+              Score: {plan.speakingProgress.overallScore}%
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowSettings((v) => !v)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
+                showSettings
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                  : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+              }`}
+              title="Quick Audio, Language & Coach Settings"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Settings</span>
+              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-white/20 text-current">
+                {displayLanguage === "english" ? "EN" : "DE"}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* CLEAN QUICK SETTINGS PANEL (Revealed on click, eliminates main screen clutter) */}
+        {showSettings && (
+          <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-3 pt-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600" /> Quick Preferences
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowSettings(false)}
+                className="text-xs text-slate-400 hover:text-slate-700 font-bold"
+              >
+                Done ✓
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              {/* Audio Mode */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-500 uppercase">AI Speaks:</label>
+                <div className="flex gap-1 bg-white p-1 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setAudioLanguage("english")}
+                    className={`flex-1 py-1 rounded-lg text-xs font-bold transition ${
+                      audioLanguage === "english"
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    🇬🇧 English
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAudioLanguage("bilingual")}
+                    className={`flex-1 py-1 rounded-lg text-xs font-bold transition ${
+                      audioLanguage === "bilingual"
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    🌐 Both
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAudioLanguage("german")}
+                    className={`flex-1 py-1 rounded-lg text-xs font-bold transition ${
+                      audioLanguage === "german"
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    🇩🇪 German
+                  </button>
+                </div>
+              </div>
+
+              {/* Text Display */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-500 uppercase">Text Display:</label>
+                <div className="flex gap-1 bg-white p-1 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setDisplayLanguage("english")}
+                    className={`flex-1 py-1 rounded-lg text-xs font-bold transition ${
+                      displayLanguage === "english"
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    🇬🇧 English First
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDisplayLanguage("german")}
+                    className={`flex-1 py-1 rounded-lg text-xs font-bold transition ${
+                      displayLanguage === "german"
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    🇩🇪 German First
+                  </button>
+                </div>
+              </div>
+
+              {/* Practice Mode */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-500 uppercase">Feedback Mode:</label>
+                <div className="flex gap-1 bg-white p-1 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("coach");
+                      setActiveCoachCard(null);
+                    }}
+                    className={`flex-1 py-1 rounded-lg text-xs font-bold transition ${
+                      mode === "coach"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    🎓 Coach Mode
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("real_life");
+                      setActiveCoachCard(null);
+                    }}
+                    className={`flex-1 py-1 rounded-lg text-xs font-bold transition ${
+                      mode === "real_life"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    🌍 Real-Life
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* German Voice Selector & Test Pronunciation */}
+            <div className="pt-3 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                  <span>🎙️</span>
+                  <span>German Pronunciation Voice:</span>
+                  {germanVoices.length > 0 ? (
+                    <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                      {germanVoices.length} native voice{germanVoices.length > 1 ? "s" : ""} available
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                      Default System Voice
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  Select your preferred native German/Austrian voice for the clearest pronunciation.
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {germanVoices.length > 0 && (
+                  <select
+                    value={selectedVoiceURI}
+                    onChange={(e) => {
+                      setSelectedVoiceURI(e.target.value);
+                      germanSpeechEngine.setPreferredGermanVoice(e.target.value);
+                    }}
+                    className="text-xs font-medium bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-indigo-500 shadow-2xs max-w-xs truncate"
+                  >
+                    {germanVoices.map((v) => {
+                      const isHD =
+                        v.name.toLowerCase().includes("natural") ||
+                        v.name.toLowerCase().includes("online") ||
+                        v.name.toLowerCase().includes("google");
+                      const isAT = v.lang.toLowerCase().includes("at");
+                      return (
+                        <option key={v.voiceURI} value={v.voiceURI}>
+                          {isAT ? "🇦🇹 " : "🇩🇪 "}
+                          {v.name} {isHD ? "✨ Natural HD" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    speakGerman("Guten Tag! Willkommen in Wien. Wie kann ich Ihnen helfen?", 0.90);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 flex items-center gap-1 transition shrink-0"
+                  title="Test selected voice"
+                >
+                  <Volume2 className="w-3.5 h-3.5" /> Test Pronunciation
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 7-DAY MISSION SELECTOR STRIP */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1">
           {austriaDays.map((d) => {
             const isSel = d.dayNumber === selectedDayNum;
             return (
@@ -305,16 +539,15 @@ export default function SpeakHubView() {
                 onClick={() => handleSelectScenarioDay(d.dayNumber)}
                 className={`shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
                   isSel
-                    ? "bg-emerald-500 text-slate-950 border-emerald-400 shadow-lg"
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
                     : d.dayNumber === 7
-                    ? "bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25"
-                    : "bg-slate-900/90 text-slate-300 border-slate-800 hover:border-slate-700"
+                    ? "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                    : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
                 }`}
               >
-                {d.dayNumber === 7 && <Award className="w-3.5 h-3.5" />}
+                {d.dayNumber === 7 ? <Award className="w-3.5 h-3.5 text-amber-500" /> : <span>{getScenarioEmoji("", d.goalTitle)}</span>}
                 <span>
-                  Day {d.dayNumber}:{" "}
-                  {d.dayNumber === 7 ? "A Day in Vienna" : d.goalTitle}
+                  Day {d.dayNumber}: {d.dayNumber === 7 ? "A Day in Vienna" : d.goalTitle}
                 </span>
               </button>
             );
@@ -322,153 +555,49 @@ export default function SpeakHubView() {
         </div>
       </div>
 
-      {/* Active Roleplay Coach */}
+      {/* MAIN CONVERSATION MESSENGER */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left 8 Cols: Interactive Conversation */}
-        <div className="lg:col-span-8 bg-slate-900/95 border border-slate-800 rounded-2xl p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
-            <div>
-              <div className="text-xs font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5" /> {scenario.setting}
-              </div>
-              <h2 className="text-lg font-extrabold text-white mt-0.5">
-                {scenario.title}
-              </h2>
-              <p className="text-xs text-slate-400">
-                Roleplay Partner:{" "}
-                <strong className="text-slate-200">
-                  {scenario.roleplayPartner}
-                </strong>
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-xl bg-slate-950 p-1 border border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode("coach");
-                    setActiveCoachCard(null);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition ${
-                    mode === "coach"
-                      ? "bg-emerald-500 text-slate-950"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  COACH MODE
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode("real_life");
-                    setActiveCoachCard(null);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition ${
-                    mode === "real_life"
-                      ? "bg-amber-400 text-slate-950"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  REAL-LIFE MODE
-                </button>
-              </div>
-
-              {/* Audio Response Language Selector */}
-              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
-                <span className="text-[10px] uppercase font-bold text-slate-400 px-1">Audio:</span>
-                <button
-                  type="button"
-                  onClick={() => setAudioLanguage("english")}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-                    audioLanguage === "english"
-                      ? "bg-teal-500 text-slate-950 shadow-sm"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                  title="AI will speak the English translation"
-                >
-                  🇬🇧 English
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAudioLanguage("bilingual")}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-                    audioLanguage === "bilingual"
-                      ? "bg-teal-500 text-slate-950 shadow-sm"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                  title="AI will speak German followed by English translation"
-                >
-                  🌐 Bilingual
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAudioLanguage("german")}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-                    audioLanguage === "german"
-                      ? "bg-teal-500 text-slate-950 shadow-sm"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                  title="AI will speak German only"
-                >
-                  🇩🇪 German
-                </button>
-              </div>
-
-              {/* Display Language Selector */}
-              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
-                <span className="text-[10px] uppercase font-bold text-slate-400 px-1">Text:</span>
-                <button
-                  type="button"
-                  onClick={() => setDisplayLanguage("english")}
-                  className={`px-2 py-0.5 rounded-lg text-xs font-bold transition ${
-                    displayLanguage === "english"
-                      ? "bg-indigo-600 text-white shadow-sm"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                  title="Show English as the main response text"
-                >
-                  🇬🇧 English First
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDisplayLanguage("german")}
-                  className={`px-2 py-0.5 rounded-lg text-xs font-bold transition ${
-                    displayLanguage === "german"
-                      ? "bg-indigo-600 text-white shadow-sm"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                  title="Show German as the main response text"
-                >
-                  🇩🇪 German First
-                </button>
-              </div>
-
-              <button
-                onClick={() => {
-                  if (audioLanguage === "english" && scenario.openingMessageEn) {
-                    speakEnglish(scenario.openingMessageEn);
-                  } else if (audioLanguage === "bilingual" && scenario.openingMessageEn) {
-                    speakBilingual(scenario.openingMessageDe, scenario.openingMessageEn);
-                  } else {
-                    speakGerman(scenario.openingMessageDe);
-                  }
-                }}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 text-xs font-bold flex items-center gap-1.5"
-              >
-                <Volume2 className="w-4 h-4" /> Replay Opening
-              </button>
-            </div>
+        {/* Left 8 Cols: Messenger Chat Screen */}
+        <div className="lg:col-span-8 bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 flex flex-col justify-between min-h-[500px]">
+          
+          {/* Top Chat Info Bar */}
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 text-xs">
+            <span className="font-bold text-slate-500 flex items-center gap-1.5">
+              <span>💬</span> Chatting with {scenario.roleplayPartner}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (audioLanguage === "english" && scenario.openingMessageEn) {
+                  speakEnglish(scenario.openingMessageEn);
+                } else if (audioLanguage === "bilingual" && scenario.openingMessageEn) {
+                  speakBilingual(scenario.openingMessageDe, scenario.openingMessageEn);
+                } else {
+                  speakGerman(scenario.openingMessageDe);
+                }
+              }}
+              className="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1"
+            >
+              <Volume2 className="w-3.5 h-3.5" /> Replay Greeting
+            </button>
           </div>
 
+          {/* Voice Notice (If any) */}
           {voiceNotice && (
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">
-              {voiceNotice}
+            <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center justify-between gap-2 shadow-xs">
+              <span>{voiceNotice}</span>
+              <button
+                type="button"
+                onClick={() => setVoiceNotice(null)}
+                className="text-slate-400 hover:text-slate-700 font-bold px-1.5"
+              >
+                ✕
+              </button>
             </div>
           )}
 
-          {/* Chat Feed */}
-          <div className="space-y-3 bg-slate-950/80 border border-slate-800 rounded-2xl p-4 max-h-96 overflow-y-auto">
+          {/* Scrollable Messages Stream */}
+          <div className="space-y-4 max-h-[420px] overflow-y-auto pr-1">
             {messages.map((m, idx) => (
               <div
                 key={idx}
@@ -476,91 +605,119 @@ export default function SpeakHubView() {
                   m.sender === "user" ? "items-end" : "items-start"
                 }`}
               >
-                <div
-                  className={`max-w-lg rounded-2xl p-3.5 ${
-                    m.sender === "user"
-                      ? "bg-emerald-500/20 border border-emerald-500/40 text-white"
-                      : "bg-slate-800/90 border border-slate-700 text-slate-100"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3 mb-1.5">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                      {m.sender === "user" ? "You" : scenario.roleplayPartner}
-                    </span>
-                    {m.sender === "ai" ? (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => speakGerman(m.german)}
-                          className="px-2 py-0.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center gap-1 text-[11px] font-semibold"
-                          title="Listen in German"
-                        >
-                          <Volume2 className="w-3 h-3 text-emerald-400" /> 🇩🇪 DE
-                        </button>
-                        {m.english && (
+                <div className="flex items-start gap-2.5 max-w-[90%] sm:max-w-[85%]">
+                  {m.sender === "ai" && (
+                    <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-200 text-base flex items-center justify-center shrink-0 mt-0.5">
+                      {getScenarioEmoji(scenario.roleplayPartner, scenario.setting)}
+                    </div>
+                  )}
+
+                  <div
+                    className={`rounded-2xl p-4 space-y-2 transition shadow-xs ${
+                      m.sender === "user"
+                        ? "bg-indigo-600 text-white rounded-tr-xs"
+                        : "bg-slate-50 border border-slate-200/90 text-slate-800 rounded-tl-xs"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className={`font-extrabold uppercase tracking-wider text-[11px] ${
+                        m.sender === "user" ? "text-indigo-200" : "text-slate-500"
+                      }`}>
+                        {m.sender === "user" ? "You" : scenario.roleplayPartner}
+                      </span>
+
+                      {m.sender === "ai" && (
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => speakEnglish(m.english || "")}
-                            className="px-2 py-0.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-teal-300 hover:text-white flex items-center gap-1 text-[11px] font-semibold"
-                            title="Listen in English"
+                            onClick={() => speakGerman(m.german, 0.92)}
+                            className="px-2 py-0.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1 text-[11px] font-bold"
+                            title="Normal Speed"
                           >
-                            <Volume2 className="w-3 h-3 text-teal-400" /> 🇬🇧 EN
+                            <Volume2 className="w-3 h-3 text-indigo-600" /> 🇩🇪 DE
                           </button>
-                        )}
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => speakGerman(m.german)}
-                        className="text-slate-400 hover:text-emerald-400"
-                        title="Listen (de-DE)"
-                      >
-                        <Volume2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-
-                  {displayLanguage === "english" && m.english ? (
-                    <div>
-                      <p className="text-sm font-bold text-white">{m.english}</p>
-                      <div className="mt-2 p-2 rounded-xl bg-slate-900/90 border border-emerald-500/30 text-xs text-emerald-300">
-                        <span className="text-[10px] font-bold uppercase tracking-wider block mb-0.5 text-emerald-400">
-                          🇩🇪 German Phrasing:
-                        </span>
-                        <p className="font-semibold text-slate-100">{m.german}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <p className="text-sm font-semibold">{m.german}</p>
-                      {m.english && (
-                        <div className="mt-2.5 p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 text-xs">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block mb-0.5">
-                            English Translation:
-                          </span>
-                          <p className="text-slate-200 text-xs sm:text-sm font-medium">{m.english}</p>
+                          <button
+                            type="button"
+                            onClick={() => speakGerman(m.german, 0.70)}
+                            className="px-2 py-0.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1 text-[11px] font-bold"
+                            title="Slow Speed (Beginner friendly)"
+                          >
+                            🐢 Slow
+                          </button>
+                          {m.english && (
+                            <button
+                              type="button"
+                              onClick={() => speakEnglish(m.english || "")}
+                              className="px-2 py-0.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1 text-[11px] font-bold"
+                              title="Listen in English"
+                            >
+                              <Volume2 className="w-3 h-3 text-emerald-600" /> 🇬🇧 EN
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
 
-                  {m.audioUrl && (
-                    <div className="mt-2.5 flex items-center gap-2 bg-slate-900/90 border border-teal-500/40 rounded-xl px-3 py-1.5 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const audio = new Audio(m.audioUrl);
-                          audio.play().catch(() => {});
-                        }}
-                        className="px-2 py-0.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 font-bold flex items-center gap-1.5 transition text-[11px]"
-                      >
-                        <Play className="w-3 h-3 fill-current" /> Play Voice Note
-                      </button>
-                      <span className="text-[11px] text-slate-400">🎙️ Your Recording</span>
+                    {/* Display Language logic */}
+                    {m.sender === "ai" ? (
+                      displayLanguage === "english" && m.english ? (
+                        <div className="space-y-1.5">
+                          <p className="text-sm sm:text-base font-extrabold text-slate-900 leading-snug">
+                            {m.english}
+                          </p>
+                          <div className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs text-indigo-900">
+                            <span className="text-[10px] font-bold uppercase tracking-wider block text-indigo-600">
+                              🇩🇪 German Phrasing:
+                            </span>
+                            <p className="font-bold text-slate-800 text-sm mt-0.5">{m.german}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <p className="text-sm sm:text-base font-extrabold text-slate-900 leading-snug">
+                            {m.german}
+                          </p>
+                          {m.english && (
+                            <div className="p-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-600">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                English:
+                              </span>
+                              <p className="font-medium text-slate-700 mt-0.5">{m.english}</p>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    ) : (
+                      <div>
+                        <p className="text-sm sm:text-base font-bold text-white">{m.german}</p>
+                        {m.audioUrl && (
+                          <div className="mt-2 flex items-center gap-2 bg-indigo-700/80 rounded-xl px-2.5 py-1 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const audio = new Audio(m.audioUrl);
+                                audio.play().catch(() => {});
+                              }}
+                              className="px-2 py-0.5 rounded-lg bg-white text-indigo-900 font-bold flex items-center gap-1 text-[11px]"
+                            >
+                              <Play className="w-3 h-3 fill-current" /> Play Voice Note
+                            </button>
+                            <span className="text-[11px] text-indigo-200">🎙️ Audio Captured</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {m.sender === "user" && (
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-black text-xs flex items-center justify-center shrink-0 mt-0.5">
+                      You
                     </div>
                   )}
                 </div>
+
                 {m.feedback && (
-                  <span className="text-xs text-emerald-400 mt-1 px-2 font-medium">
+                  <span className="text-xs text-emerald-600 font-bold mt-1 px-3">
                     ★ {m.feedback}
                   </span>
                 )}
@@ -568,45 +725,45 @@ export default function SpeakHubView() {
             ))}
           </div>
 
-          {/* Coach Mode Correction Card */}
+          {/* COACH CORRECTION CARD (If active) */}
           {activeCoachCard && (
-            <div className="rounded-2xl bg-amber-950/50 border-2 border-amber-500/50 p-4 space-y-2.5 text-xs shadow-lg">
+            <div className="rounded-2xl bg-amber-50 border-2 border-amber-300 p-4 space-y-2.5 text-xs shadow-sm">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-extrabold text-amber-300 uppercase">
+                <span className="font-extrabold text-amber-900 uppercase">
                   {activeCoachCard.headline}
                 </span>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => speakGerman(activeCoachCard.mistake.correctSentence)}
-                    className="px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 flex items-center gap-1 text-[11px]"
+                    onClick={() => speakGerman(activeCoachCard.mistake.correctSentence, 0.92)}
+                    className="px-2 py-1 rounded-lg bg-white border border-amber-200 text-amber-900 font-bold flex items-center gap-1 text-[11px]"
                     title="Hear in German"
                   >
-                    <Volume2 className="w-3 h-3" /> 🇩🇪 German
+                    <Volume2 className="w-3 h-3 text-amber-700" /> 🇩🇪 German
                   </button>
                   <button
                     type="button"
                     onClick={() => speakEnglish(activeCoachCard.mistake.explanation)}
-                    className="px-2 py-1 rounded-lg bg-teal-500/20 text-teal-300 hover:bg-teal-500/30 flex items-center gap-1 text-[11px]"
+                    className="px-2 py-1 rounded-lg bg-white border border-amber-200 text-amber-900 font-bold flex items-center gap-1 text-[11px]"
                     title="Hear in English"
                   >
-                    <Volume2 className="w-3 h-3" /> 🇬🇧 English
+                    <Volume2 className="w-3 h-3 text-amber-700" /> 🇬🇧 English
                   </button>
                 </div>
               </div>
-              <div className="text-white">
+              <div className="text-slate-800">
                 Correct sentence:{" "}
-                <strong className="text-emerald-300">
+                <strong className="text-emerald-700 text-sm">
                   „{activeCoachCard.mistake.correctSentence}“
                 </strong>
                 {activeCoachCard.mistake.englishTranslation && (
-                  <div className="text-xs text-slate-300 mt-0.5">
+                  <div className="text-xs text-slate-600 mt-0.5">
                     English: &ldquo;{activeCoachCard.mistake.englishTranslation}&rdquo;
                   </div>
                 )}
               </div>
-              <p className="text-slate-200">
-                <span className="font-bold text-amber-300">Why in English: </span>
+              <p className="text-slate-700">
+                <span className="font-bold text-amber-800">Coach explanation: </span>
                 {activeCoachCard.mistake.explanation}
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
@@ -616,9 +773,9 @@ export default function SpeakHubView() {
                     setCustomText(activeCoachCard.mistake.correctSentence);
                     setActiveCoachCard(null);
                   }}
-                  className="px-3.5 py-1.5 rounded-xl bg-amber-400 text-slate-950 font-extrabold flex items-center gap-1"
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold flex items-center gap-1 shadow-xs"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" /> Try Again
+                  <RotateCcw className="w-3.5 h-3.5" /> Try Speaking Again
                 </button>
                 <button
                   type="button"
@@ -627,7 +784,7 @@ export default function SpeakHubView() {
                     setActiveCoachCard(null);
                     sendToMissionBackend(c);
                   }}
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-extrabold"
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-xs"
                 >
                   Send Corrected Answer
                 </button>
@@ -635,66 +792,44 @@ export default function SpeakHubView() {
             </div>
           )}
 
-          {/* Suggested Stage Responses */}
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Guided Mission Responses (or test &ldquo;Ich möchte eine Kaffee.&rdquo;):
+          {/* 1-TAP QUICK BEGINNER PROMPTS (Removes freeze & anxiety) */}
+          <div className="space-y-2 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-500">
+                💡 Need ideas? Tap to practice speaking:
               </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    sendToMissionBackend("Ich möchte eine Kaffee.")
-                  }
-                  className="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-200 border border-amber-500/40 text-xs font-bold"
-                >
-                  Test: „Ich möchte eine Kaffee.“
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleVoiceRecording}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                    isRecording
-                      ? "bg-rose-500 text-white animate-pulse shadow-lg shadow-rose-500/30"
-                      : "bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30"
-                  }`}
-                >
-                  <Mic className="w-3.5 h-3.5" />
-                  {isRecording ? "Recording Voice..." : "Speak via Mic"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => sendToMissionBackend("Ich möchte einen Kaffee, bitte.")}
+                className="text-indigo-600 hover:text-indigo-800 font-bold"
+              >
+                Quick Order Demo →
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-2">
+            <div className="flex flex-wrap gap-2">
               {scenario.suggestedPrompts.map((sp, idx) => {
                 const done = usedStages.includes(idx);
                 return (
                   <button
                     key={idx}
+                    type="button"
                     onClick={() => handlePromptClick(idx)}
                     disabled={done}
-                    className={`p-3 rounded-xl border text-left transition flex items-center justify-between gap-3 ${
+                    className={`px-3 py-2 rounded-xl border text-left text-xs transition flex items-center gap-2 ${
                       done
-                        ? "bg-slate-900/40 border-slate-800 text-slate-500"
-                        : "bg-slate-800/80 hover:bg-slate-800 border-slate-700 hover:border-emerald-500/50 text-white"
+                        ? "bg-slate-100 border-slate-200 text-slate-400 cursor-default"
+                        : "bg-slate-50 hover:bg-indigo-50 border-slate-200 text-slate-800 hover:text-indigo-700 hover:border-indigo-300"
                     }`}
                   >
                     <div>
-                      {sp.stageLabel && (
-                        <span className="text-xs font-bold text-emerald-400 block mb-0.5">
-                          {sp.stageLabel}
-                        </span>
-                      )}
-                      <div className="text-xs sm:text-sm font-semibold">
-                        {sp.german}
-                      </div>
-                      <div className="text-xs text-slate-400">{sp.english}</div>
+                      <div className="font-bold">„{sp.german}“</div>
+                      <div className="text-[11px] text-slate-500">{sp.english}</div>
                     </div>
                     {done ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                     ) : (
-                      <MessageSquare className="w-4 h-4 text-teal-400 shrink-0" />
+                      <MessageSquare className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                     )}
                   </button>
                 );
@@ -702,160 +837,147 @@ export default function SpeakHubView() {
             </div>
           </div>
 
-          {/* Free Input with Prominent Microphone & Live Speech Status */}
-          <form onSubmit={handleCustomSend} className="space-y-2 pt-1">
-            {voiceNotice && (
-              <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-xs text-amber-200 flex items-center justify-between gap-2 shadow-sm">
-                <span>{voiceNotice}</span>
-                <button
-                  type="button"
-                  onClick={() => setVoiceNotice(null)}
-                  className="text-slate-400 hover:text-white font-bold px-1.5"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-
-            {/* LIVE DYNAMIC AUDIO RECORDER WAVEFORM & TIMER */}
-            {isRecording && (
-              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-950/80 via-slate-900 to-slate-950 border-2 border-rose-500/60 text-xs text-rose-200 shadow-xl space-y-2.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping shrink-0" />
-                    <span className="font-extrabold text-white text-xs uppercase tracking-wider">
-                      Recording Voice (0:{recordingSeconds < 10 ? `0${recordingSeconds}` : recordingSeconds})
-                    </span>
-                  </div>
-                  {/* Dynamic audio equalizer waveform reacting to user's real volume */}
-                  <div className="flex items-end gap-1 h-5 px-2 bg-slate-950/90 rounded-lg border border-slate-800">
-                    {[0.3, 0.7, 1.0, 0.6, 0.9, 0.4].map((scale, i) => (
-                      <div
-                        key={i}
-                        className="w-1.5 rounded-full bg-rose-400 transition-all duration-75"
-                        style={{
-                          height: `${Math.max(4, Math.min(20, (audioLevel / 100) * 20 * scale + (audioLevel > 5 ? 3 : 1)))}px`,
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div className="text-slate-300 text-xs bg-slate-950/70 rounded-xl p-2.5 border border-slate-800 flex items-center justify-between gap-2">
-                  <span className="italic truncate">
-                    {customText ? `„${customText}“` : "Speak German now — microphone is actively capturing your voice..."}
+          {/* ACTIVE RECORDING WAVEFORM & CONFIRMATION */}
+          {isRecording && (
+            <div className="p-4 rounded-2xl bg-rose-50 border-2 border-rose-400 text-xs text-rose-900 shadow-lg space-y-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping shrink-0" />
+                  <span className="font-extrabold text-rose-900 text-xs uppercase tracking-wider">
+                    Recording Voice (0:{recordingSeconds < 10 ? `0${recordingSeconds}` : recordingSeconds})
                   </span>
                 </div>
-
-                <div className="flex items-center justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={cancelVoiceRecording}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={stopAndProcessVoice}
-                    className="px-4 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-extrabold text-xs shadow-lg shadow-rose-500/40 flex items-center gap-1.5 transition"
-                  >
-                    Finish &amp; Send Voice
-                  </button>
+                {/* Volume Equalizer */}
+                <div className="flex items-end gap-1 h-5 px-2 bg-white rounded-lg border border-rose-200">
+                  {[0.3, 0.7, 1.0, 0.6, 0.9, 0.4].map((scale, i) => (
+                    <div
+                      key={i}
+                      className="w-1.5 rounded-full bg-rose-500 transition-all duration-75"
+                      style={{
+                        height: `${Math.max(4, Math.min(20, (audioLevel / 100) * 20 * scale + (audioLevel > 5 ? 3 : 1)))}px`,
+                      }}
+                    />
+                  ))}
                 </div>
               </div>
-            )}
 
-            {/* QUICK CONFIRM FOR RECORDED VOICE NOTE (When STT produced no text or on mobile Safari) */}
-            {pendingVoiceNote && (
-              <div className="p-4 rounded-2xl bg-teal-950/60 border-2 border-teal-500/50 space-y-3 shadow-xl">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Radio className="w-4 h-4 text-teal-400 animate-pulse" />
-                    <span className="font-extrabold text-white text-xs uppercase tracking-wider">
-                      Voice Note Recorded ({pendingVoiceNote.durationSeconds}s)
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const audio = new Audio(pendingVoiceNote.audioUrl);
-                      audio.play().catch(() => {});
-                    }}
-                    className="px-3 py-1 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 text-xs font-bold flex items-center gap-1.5 transition"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" /> Listen to Audio
-                  </button>
+              <div className="text-slate-800 text-xs bg-white rounded-xl p-3 border border-rose-200 flex items-center justify-between gap-2">
+                <span className="italic truncate font-medium">
+                  {customText ? `„${customText}“` : "Speak German now — microphone is actively capturing your voice..."}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={cancelVoiceRecording}
+                  className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs border border-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={stopAndProcessVoice}
+                  className="px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md shadow-rose-500/20 flex items-center gap-1.5 transition"
+                >
+                  Finish &amp; Send Voice
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* PENDING VOICE NOTE (Mobile Safari / quiet audio fallback) */}
+          {pendingVoiceNote && (
+            <div className="p-4 rounded-2xl bg-indigo-50 border-2 border-indigo-300 space-y-3 shadow-md">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-indigo-600 animate-pulse" />
+                  <span className="font-extrabold text-indigo-950 text-xs uppercase tracking-wider">
+                    Voice Note Recorded ({pendingVoiceNote.durationSeconds}s)
+                  </span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const audio = new Audio(pendingVoiceNote.audioUrl);
+                    audio.play().catch(() => {});
+                  }}
+                  className="px-3 py-1 rounded-xl bg-white hover:bg-slate-50 text-indigo-700 text-xs font-bold border border-indigo-200 flex items-center gap-1.5 transition shadow-2xs"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" /> Listen
+                </button>
+              </div>
 
-                <p className="text-xs text-slate-300">
-                  We captured your voice recording! Tap what you spoke or send it directly:
-                </p>
+              <p className="text-xs text-slate-600">
+                We captured your voice recording! Tap what you spoke or send it directly:
+              </p>
 
-                <div className="flex flex-wrap gap-2">
-                  {scenario.suggestedPrompts.slice(0, 3).map((sp, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => {
-                        const url = pendingVoiceNote.audioUrl;
-                        setPendingVoiceNote(null);
-                        sendToMissionBackend(sp.german, idx, url);
-                      }}
-                      className="px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-teal-500/30 text-xs text-teal-200 font-semibold transition text-left"
-                    >
-                      „{sp.german}“
-                    </button>
-                  ))}
+              <div className="flex flex-wrap gap-2">
+                {scenario.suggestedPrompts.slice(0, 3).map((sp, idx) => (
                   <button
+                    key={idx}
                     type="button"
                     onClick={() => {
                       const url = pendingVoiceNote.audioUrl;
                       setPendingVoiceNote(null);
-                      sendToMissionBackend("Ich habe eine Sprachnachricht gesendet.", undefined, url);
+                      sendToMissionBackend(sp.german, idx, url);
                     }}
-                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 text-xs font-extrabold shadow-lg transition"
+                    className="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 border border-indigo-200 text-xs text-indigo-800 font-semibold transition"
                   >
-                    Send Voice Note Directly
+                    „{sp.german}“
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setPendingVoiceNote(null)}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-semibold transition"
-                  >
-                    Discard
-                  </button>
-                </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = pendingVoiceNote.audioUrl;
+                    setPendingVoiceNote(null);
+                    sendToMissionBackend("Ich habe eine Sprachnachricht gesendet.", undefined, url);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-sm transition"
+                >
+                  Send Voice Note Directly
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingVoiceNote(null)}
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-500 text-xs font-semibold transition border border-slate-200"
+                >
+                  Discard
+                </button>
               </div>
-            )}
+            </div>
+          )}
 
-            <div className="flex gap-2">
+          {/* INPUT BAR & PROMINENT CENTRAL MICROPHONE */}
+          <form onSubmit={handleCustomSend} className="space-y-3 pt-2">
+            <div className="flex items-center gap-2">
               <input
                 type="text"
                 value={customText}
                 onChange={(e) => setCustomText(e.target.value)}
-                placeholder='Speak into mic or type (e.g. "Ich möchte einen Kaffee, bitte.")...'
-                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-teal-500"
+                placeholder='Type or tap the microphone to speak (e.g. "Einen Kaffee, bitte")...'
+                className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
               />
               <button
                 type="button"
                 data-testid="speak-mic-button"
                 onClick={toggleVoiceRecording}
-                className={`px-3.5 sm:px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
+                className={`px-4 sm:px-5 py-3 rounded-2xl border text-xs font-bold flex items-center gap-2 transition ${
                   isRecording
-                    ? "bg-rose-500 text-white border-rose-400 animate-pulse shadow-lg shadow-rose-500/30"
-                    : "bg-slate-900 hover:bg-slate-800 text-rose-300 border-rose-500/40"
+                    ? "bg-rose-600 text-white border-rose-500 animate-pulse shadow-md shadow-rose-500/20"
+                    : "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-md shadow-indigo-500/20"
                 }`}
-                title="Click to speak German with your microphone"
+                title="Tap to speak German"
               >
                 <Mic className="w-4 h-4" />
-                <span>{isRecording ? "Finish" : "Speak"}</span>
+                <span className="hidden sm:inline">{isRecording ? "Stop Recording" : "Speak German"}</span>
               </button>
               <button
                 type="submit"
-                className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5"
+                className="px-4 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 transition"
               >
-                <Send className="w-3.5 h-3.5" /> Send
+                <Send className="w-3.5 h-3.5" />
               </button>
             </div>
           </form>
@@ -863,33 +985,40 @@ export default function SpeakHubView() {
 
         {/* Right 4 Cols: Pronunciation Lab & Target Phrases */}
         <div className="lg:col-span-4 space-y-4">
-          <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-5 space-y-3">
-            <div className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" /> Mission Key Expressions
+          <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-extrabold uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-600" /> Key Phrases &amp; Sounds
+              </div>
+              <span className="text-xs font-bold text-slate-500">
+                {selectedDay.speaking.length} phrases
+              </span>
             </div>
-            <p className="text-xs text-slate-400">
-              Tap any phrase below to hear native German pronunciation before
-              using it in the roleplay:
+            <p className="text-xs text-slate-500">
+              Tap any phrase to hear native pronunciation before speaking:
             </p>
+
             <div className="space-y-2">
               {selectedDay.speaking.map((sp) => (
                 <button
                   key={sp.id}
                   onClick={() => speakGerman(sp.germanPhrase, 0.88)}
-                  className="w-full text-left p-3 rounded-xl bg-slate-950/80 hover:bg-slate-800 border border-slate-800 transition"
+                  className="w-full text-left p-3.5 rounded-2xl bg-slate-50 hover:bg-indigo-50/50 border border-slate-200/80 hover:border-indigo-200 transition group"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs sm:text-sm font-bold text-white">
+                    <span className="text-xs sm:text-sm font-extrabold text-slate-900 group-hover:text-indigo-700">
                       {sp.germanPhrase}
                     </span>
-                    <Volume2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Volume2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 shrink-0" />
                   </div>
-                  <div className="text-xs text-slate-400 mt-0.5">
+                  <div className="text-xs text-slate-600 mt-0.5">
                     {sp.englishMeaning}
                   </div>
-                  <div className="text-xs font-mono text-emerald-400/90 mt-1">
-                    [{sp.phoneticGuide}]
-                  </div>
+                  {sp.phoneticGuide && (
+                    <div className="text-xs font-medium text-indigo-600 italic mt-1">
+                      [{sp.phoneticGuide}]
+                    </div>
+                  )}
                 </button>
               ))}
             </div>

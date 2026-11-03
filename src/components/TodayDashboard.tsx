@@ -16,6 +16,8 @@ import {
   AlertTriangle,
   ArrowRight,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Compass,
   MapPin,
   Volume2,
@@ -28,11 +30,13 @@ import { ActivityType } from "@/types/learning";
 interface TodayDashboardProps {
   onOpenLearningPath: () => void;
   onOpenSpeakHub?: () => void;
+  onOpenBasics?: (section?: "alphabet" | "numbers" | "calendar" | "survival") => void;
 }
 
 export default function TodayDashboard({
   onOpenLearningPath,
   onOpenSpeakHub,
+  onOpenBasics,
 }: TodayDashboardProps) {
   const {
     plan,
@@ -52,6 +56,7 @@ export default function TodayDashboard({
   const [reviewSelections, setReviewSelections] = useState<
     Record<string, string>
   >({});
+  const [isCurriculumOpen, setIsCurriculumOpen] = useState(false);
 
   const activeReadinessItem = plan.realWorldReadiness?.find(
     (r) => r.dayNumber === activeDay.dayNumber
@@ -154,6 +159,69 @@ export default function TodayDashboard({
 
   return (
     <div className="space-y-6">
+      {/* ZERO KNOWLEDGE BEGINNER HERO BANNER (TOP PRIORITY FOR BEGINNERS) */}
+      {onOpenBasics && (
+        <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 rounded-3xl p-4 sm:p-5 text-white shadow-lg shadow-emerald-700/15 relative overflow-hidden border border-emerald-500/30">
+          <div className="absolute right-0 top-0 translate-x-6 -translate-y-6 w-44 h-44 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-emerald-100 text-xs font-black uppercase tracking-wider">
+                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
+                Zero German Knowledge? Start Here
+              </div>
+              <h2 className="text-base sm:text-lg font-black text-white tracking-tight flex items-center gap-2">
+                <span>🌱 German Foundations Hub (A0)</span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-400/30 border border-emerald-300/40 text-emerald-100">
+                  Pre-A1 Essentials
+                </span>
+              </h2>
+              <p className="text-xs text-emerald-100 max-w-xl font-medium leading-relaxed">
+                Before framing sentences, learn the essential building blocks: 
+                <strong> Alphabet &amp; Umlauts (Ä, Ö, Ü, ß)</strong>, 
+                <strong> Numbers (0–100)</strong>, 
+                <strong> Days &amp; Months</strong>, and <strong>Survival Phrases</strong> with authentic German speech.
+              </p>
+              
+              {/* Quick Jump Direct Buttons */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <button
+                  onClick={() => onOpenBasics("alphabet")}
+                  className="px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white text-xs font-bold transition flex items-center gap-1"
+                >
+                  <span>🔤 Alphabet &amp; Spelling</span>
+                </button>
+                <button
+                  onClick={() => onOpenBasics("numbers")}
+                  className="px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white text-xs font-bold transition flex items-center gap-1"
+                >
+                  <span>🔢 Numbers 0–100</span>
+                </button>
+                <button
+                  onClick={() => onOpenBasics("calendar")}
+                  className="px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white text-xs font-bold transition flex items-center gap-1"
+                >
+                  <span>📅 Days &amp; Months</span>
+                </button>
+                <button
+                  onClick={() => onOpenBasics("survival")}
+                  className="px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white text-xs font-bold transition flex items-center gap-1"
+                >
+                  <span>💬 15 Survival Words</span>
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={() => onOpenBasics("alphabet")}
+              className="px-5 py-3 rounded-2xl bg-white hover:bg-emerald-50 text-emerald-800 font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-black/10 hover:scale-[1.02] active:scale-[0.98] shrink-0"
+            >
+              <span>Open Basics Hub</span>
+              <ArrowRight className="w-4 h-4 text-emerald-600" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Viewing Past/Future Day Banner */}
       {activeDay.dayNumber !== todayDay.dayNumber && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
@@ -209,6 +277,22 @@ export default function TodayDashboard({
         </div>
       )}
 
+      {/* COACH NOVA ENCOURAGING WELCOME */}
+      <div className="bg-gradient-to-r from-indigo-500/10 via-violet-500/5 to-white border border-indigo-100 rounded-3xl p-4 sm:p-5 flex items-center gap-3.5 shadow-sm">
+        <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shrink-0 shadow-md shadow-indigo-500/20">
+          🦉
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Coach Nova:</div>
+          <div className="text-xs sm:text-sm font-extrabold text-slate-800">
+            „Guten Tag! Ready for your 5-minute German mission: {activeDay.missionBriefing?.missionTitle || activeDay.goalTitle}?”
+          </div>
+        </div>
+        <span className="hidden sm:inline-flex px-3 py-1 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-semibold">
+          Day {activeDay.dayNumber} of 7
+        </span>
+      </div>
+
       {/* CLEAN, FOCUSED HERO CARD */}
       <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-7 space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -252,39 +336,54 @@ export default function TodayDashboard({
           </p>
         </div>
 
-        {/* Clean Progress Bar */}
-        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-2.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-slate-600">
-              Daily Progress ({completedActivitiesCount} of {totalActivitiesCount} steps)
-            </span>
-            <span className="font-extrabold text-indigo-600">
-              {progressPercentage}%
-            </span>
+        {/* Visual 3-Bite Milestone Journey Track */}
+        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 sm:p-5 space-y-3">
+          <div className="flex items-center justify-between text-xs font-bold">
+            <span className="text-slate-700">Today&apos;s 5-Minute Habit ({completedActivitiesCount} of {totalActivitiesCount} steps completed)</span>
+            <span className="text-indigo-600 font-extrabold">{progressPercentage}% done</span>
           </div>
-          <div className="grid grid-cols-8 gap-1.5">
-            {activeDay.activities.map((act) => {
-              const isCurrent = !act.completed && act.id === nextActivity.id;
-              return (
-                <button
-                  key={act.id}
-                  onClick={() => setActiveActivityId(act.id)}
-                  title={`${act.order}. ${act.title}`}
-                  className={`h-2 rounded-full transition-all ${
-                    act.completed
-                      ? "bg-emerald-500"
-                      : isCurrent
-                      ? "bg-indigo-600"
-                      : "bg-slate-200 hover:bg-slate-300"
-                  }`}
-                />
-              );
-            })}
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className={`p-3 rounded-xl border flex flex-col justify-between transition ${
+              activeDay.activities.slice(0, 2).every(a => a.completed)
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-indigo-600 text-white shadow-sm"
+            }`}>
+              <div className="flex items-center justify-between text-[11px] font-bold">
+                <span>1. Core Vocabulary</span>
+                <span>{activeDay.activities.slice(0, 2).every(a => a.completed) ? "✓ Done" : "2 min"}</span>
+              </div>
+              <div className="text-xs font-extrabold mt-1">Essential Words &amp; Sounds</div>
+            </div>
+
+            <div className={`p-3 rounded-xl border flex flex-col justify-between transition ${
+              activeDay.activities.slice(2, 5).every(a => a.completed)
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-white border-slate-200 text-slate-700"
+            }`}>
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+                <span>2. Sentence Building</span>
+                <span>{activeDay.activities.slice(2, 5).every(a => a.completed) ? "✓ Done" : "1 min"}</span>
+              </div>
+              <div className="text-xs font-bold mt-1">Polite Sentence Practice</div>
+            </div>
+
+            <div className={`p-3 rounded-xl border flex flex-col justify-between transition ${
+              activeDay.activities.slice(5).every(a => a.completed)
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-white border-slate-200 text-slate-700"
+            }`}>
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+                <span>3. Real-Life Speaking</span>
+                <span>{activeDay.activities.slice(5).every(a => a.completed) ? "✓ Done" : "2 min"}</span>
+              </div>
+              <div className="text-xs font-bold mt-1">Roleplay with AI Partner 🎙️</div>
+            </div>
           </div>
         </div>
 
         {/* Single Clear Primary CTA + Optional Voice Coach Link */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
           <button
             onClick={() => setActiveActivityId(nextActivity.id)}
             className="btn-brand-primary flex-1 sm:flex-initial justify-center px-6 py-3.5 rounded-2xl font-extrabold text-sm flex items-center gap-2.5 shadow-md shadow-indigo-500/15 transition hover:opacity-95"
@@ -296,52 +395,161 @@ export default function TodayDashboard({
           {onOpenSpeakHub && (
             <button
               onClick={onOpenSpeakHub}
-              className="justify-center px-4 py-3.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold text-xs sm:text-sm flex items-center gap-2 transition"
+              className="justify-center px-5 py-3.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold text-xs sm:text-sm flex items-center gap-2 transition"
             >
-              <Mic className="w-4 h-4 text-indigo-600" /> Practice Roleplay
+              <Mic className="w-4 h-4 text-indigo-600" /> Practice Voice Roleplay
             </button>
           )}
         </div>
+
+        <div className="text-xs text-slate-500 font-medium pt-1">
+          ✨ Zero German background required • 5 minutes a day • Real-life Austrian context
+        </div>
       </div>
 
-      {/* CLEAN 3-TAB SWITCHER (Eliminates vertical page overload) */}
-      <div className="flex items-center gap-1.5 bg-slate-200/70 p-1.5 rounded-2xl w-full sm:w-fit">
-        <button
-          onClick={() => setActiveSubTab("steps")}
-          className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-extrabold transition ${
-            activeSubTab === "steps"
-              ? "bg-white text-indigo-700 shadow-sm"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-        >
-          Today&apos;s 8 Steps ({completedActivitiesCount}/{totalActivitiesCount})
-        </button>
-        <button
-          onClick={() => setActiveSubTab("review")}
-          className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-extrabold transition flex items-center justify-center gap-1.5 ${
-            activeSubTab === "review"
-              ? "bg-white text-indigo-700 shadow-sm"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-        >
-          Personal Review
-          {activeMistakesCount > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">
-              {activeMistakesCount}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveSubTab("vocabulary")}
-          className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-extrabold transition ${
-            activeSubTab === "vocabulary"
-              ? "bg-white text-indigo-700 shadow-sm"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-        >
-          Vocabulary ({activeDay.vocabulary.length})
-        </button>
+      {/* TODAY'S MAGIC WORDS & SOUNDS (Quick Cheat Sheet with Phonetics) */}
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-extrabold text-slate-900">
+              Today&apos;s Magic Words &amp; Sounds
+            </h3>
+            <p className="text-xs text-slate-500">
+              Tap the audio button to hear native German pronunciation (with slow 🐢 option)
+            </p>
+          </div>
+          <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">
+            Key Essentials
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {activeDay.vocabulary.slice(0, 3).map((v) => (
+            <div
+              key={v.id}
+              className="p-3.5 rounded-2xl bg-slate-50/80 hover:bg-indigo-50/40 border border-slate-200/80 transition flex flex-col justify-between gap-2.5"
+            >
+              <div>
+                <div className="flex items-center justify-between gap-1.5 mb-1">
+                  {v.article ? (
+                    <span className={`px-2 py-0.5 rounded-md text-[11px] font-extrabold border ${getArticleBadgeStyle(v.article)}`}>
+                      {v.article}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                      Phrase
+                    </span>
+                  )}
+                  <span className="text-[11px] font-medium text-slate-500 truncate">
+                    {v.english}
+                  </span>
+                </div>
+
+                <div className="text-base font-black text-slate-900">
+                  {v.word}
+                </div>
+
+                {v.pronunciationHint && (
+                  <div className="text-xs font-semibold text-indigo-700 italic mt-0.5">
+                    [{v.pronunciationHint}]
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200/60">
+                <button
+                  type="button"
+                  onClick={() => speakGerman(v.article ? `${v.article} ${v.word}` : v.word, 0.92)}
+                  className="flex-1 py-1.5 px-2 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 border border-slate-200 text-xs font-bold flex items-center justify-center gap-1 transition shadow-2xs"
+                  title="Listen in normal speed"
+                >
+                  <Volume2 className="w-3.5 h-3.5" /> Listen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => speakGerman(v.article ? `${v.article} ${v.word}` : v.word, 0.70)}
+                  className="py-1.5 px-2.5 rounded-xl bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border border-slate-200 text-xs font-bold flex items-center justify-center gap-1 transition shadow-2xs"
+                  title="Listen in slow speed (beginner friendly)"
+                >
+                  🐢 Slow
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* PROGRESSIVE DISCLOSURE: FULL CURRICULUM ACCORDION */}
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm space-y-4">
+        <button
+          type="button"
+          onClick={() => setIsCurriculumOpen((v) => !v)}
+          className="w-full flex items-center justify-between text-left group"
+        >
+          <div className="min-w-0 pr-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm sm:text-base font-black text-slate-900 group-hover:text-indigo-600 transition flex items-center gap-2">
+                📚 Full Day {activeDay.dayNumber} Curriculum Journey
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">
+                {completedActivitiesCount} of {totalActivitiesCount} done
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              {isCurriculumOpen
+                ? "Click to collapse detailed view"
+                : "Expand to explore all 8 lesson activities, personal review quiz, and full vocabulary"}
+            </p>
+          </div>
+          <div className="w-8 h-8 rounded-xl bg-slate-100 group-hover:bg-indigo-50 group-hover:text-indigo-600 flex items-center justify-center text-slate-500 font-bold transition shrink-0">
+            {isCurriculumOpen ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
+          </div>
+        </button>
+
+        {isCurriculumOpen && (
+          <div className="pt-4 border-t border-slate-100 space-y-4">
+            {/* CLEAN 3-TAB SWITCHER */}
+            <div className="flex items-center gap-1.5 bg-slate-200/70 p-1.5 rounded-2xl w-full sm:w-fit">
+              <button
+                onClick={() => setActiveSubTab("steps")}
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-extrabold transition ${
+                  activeSubTab === "steps"
+                    ? "bg-white text-indigo-700 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Today&apos;s 8 Steps ({completedActivitiesCount}/{totalActivitiesCount})
+              </button>
+              <button
+                onClick={() => setActiveSubTab("review")}
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-extrabold transition flex items-center justify-center gap-1.5 ${
+                  activeSubTab === "review"
+                    ? "bg-white text-indigo-700 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Personal Review
+                {activeMistakesCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">
+                    {activeMistakesCount}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveSubTab("vocabulary")}
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-extrabold transition ${
+                  activeSubTab === "vocabulary"
+                    ? "bg-white text-indigo-700 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Vocabulary ({activeDay.vocabulary.length})
+              </button>
+            </div>
 
       {/* SUB-TAB 1: TODAY'S 8-STEP CHECKLIST */}
       {activeSubTab === "steps" && (
@@ -643,20 +851,41 @@ export default function TodayDashboard({
                       {v.english}
                       {v.plural ? ` • Plural: ${v.plural}` : ""}
                     </div>
+                    {v.pronunciationHint && (
+                      <div className="text-xs font-semibold text-indigo-700 italic mt-1">
+                        [{v.pronunciationHint}]
+                      </div>
+                    )}
                   </div>
 
-                  <button
-                    onClick={() =>
-                      speakGerman(
-                        v.article ? `${v.article} ${v.word}` : v.word,
-                        0.9
-                      )
-                    }
-                    className="p-2 rounded-xl bg-white hover:bg-indigo-50 text-indigo-600 border border-slate-200 transition shrink-0"
-                    title="Listen to pronunciation"
-                  >
-                    <Volume2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        speakGerman(
+                          v.article ? `${v.article} ${v.word}` : v.word,
+                          0.92
+                        )
+                      }
+                      className="p-2 rounded-xl bg-white hover:bg-indigo-50 text-indigo-600 border border-slate-200 transition"
+                      title="Listen to pronunciation"
+                    >
+                      <Volume2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        speakGerman(
+                          v.article ? `${v.article} ${v.word}` : v.word,
+                          0.70
+                        )
+                      }
+                      className="px-2 py-1.5 rounded-xl bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border border-slate-200 transition text-xs font-bold"
+                      title="Slow pronunciation (beginner friendly)"
+                    >
+                      🐢 Slow
+                    </button>
+                  </div>
                 </div>
 
                 <div className="text-xs text-slate-500 italic pt-2 border-t border-slate-200/70">
@@ -667,6 +896,9 @@ export default function TodayDashboard({
           </div>
         </div>
       )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

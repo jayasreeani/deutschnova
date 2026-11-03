@@ -40,81 +40,13 @@ interface ActivityPlayerProps {
   onNextActivity: (nextActivityId: string | null) => void;
 }
 
-export function speakGerman(text: string, rate = 0.92) {
-  if (typeof window === "undefined" || !("speechSynthesis" in window) || !text) return;
-  try {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "de-DE";
-    utterance.rate = rate;
-    const voices = window.speechSynthesis.getVoices();
-    const deVoice = voices.find((v) => v.lang.toLowerCase().startsWith("de"));
-    if (deVoice) utterance.voice = deVoice;
-    window.speechSynthesis.speak(utterance);
-  } catch {
-    // Ignore speech synthesis errors on unsupported environments
-  }
-}
-
-export function speakEnglish(text: string, rate = 0.95) {
-  if (typeof window === "undefined" || !("speechSynthesis" in window) || !text) return;
-  try {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    utterance.rate = rate;
-    const voices = window.speechSynthesis.getVoices();
-    const enVoice = voices.find(
-      (v) =>
-        v.lang.toLowerCase().startsWith("en-us") ||
-        v.lang.toLowerCase().startsWith("en-gb") ||
-        v.lang.toLowerCase().startsWith("en")
-    );
-    if (enVoice) utterance.voice = enVoice;
-    window.speechSynthesis.speak(utterance);
-  } catch {
-    // Ignore speech synthesis errors on unsupported environments
-  }
-}
-
-export function speakBilingual(germanText: string, englishText: string, rate = 0.92) {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-  try {
-    window.speechSynthesis.cancel();
-    if (!germanText) {
-      if (englishText) speakEnglish(englishText);
-      return;
-    }
-    const deUtterance = new SpeechSynthesisUtterance(germanText);
-    deUtterance.lang = "de-DE";
-    deUtterance.rate = rate;
-    const voices = window.speechSynthesis.getVoices();
-    const deVoice = voices.find((v) => v.lang.toLowerCase().startsWith("de"));
-    if (deVoice) deUtterance.voice = deVoice;
-
-    if (englishText) {
-      deUtterance.onend = () => {
-        try {
-          const enUtterance = new SpeechSynthesisUtterance(englishText);
-          enUtterance.lang = "en-US";
-          enUtterance.rate = 0.95;
-          const enVoice = voices.find(
-            (v) =>
-              v.lang.toLowerCase().startsWith("en-us") ||
-              v.lang.toLowerCase().startsWith("en-gb") ||
-              v.lang.toLowerCase().startsWith("en")
-          );
-          if (enVoice) enUtterance.voice = enVoice;
-          window.speechSynthesis.speak(enUtterance);
-        } catch {}
-      };
-    }
-
-    window.speechSynthesis.speak(deUtterance);
-  } catch {
-    // Ignore speech synthesis errors on unsupported environments
-  }
-}
+import {
+  speakGerman,
+  speakEnglish,
+  speakBilingual,
+  germanSpeechEngine,
+} from "@/lib/germanSpeechEngine";
+export { speakGerman, speakEnglish, speakBilingual, germanSpeechEngine };
 
 export default function ActivityPlayer({
   day,
@@ -510,7 +442,7 @@ export default function ActivityPlayer({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() =>
                   speakGerman(
@@ -520,16 +452,34 @@ export default function ActivityPlayer({
                         .startsWith(currentWord.article.toLowerCase() + " ")
                       ? `${currentWord.article} ${currentWord.word}`
                       : currentWord.word,
-                    0.9
+                    0.92
                   )
                 }
                 className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition"
               >
-                <Volume2 className="w-4 h-4" /> Hear Expression
+                <Volume2 className="w-4 h-4" /> Normal Audio
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  speakGerman(
+                    currentWord.article &&
+                      !currentWord.word
+                        .toLowerCase()
+                        .startsWith(currentWord.article.toLowerCase() + " ")
+                      ? `${currentWord.article} ${currentWord.word}`
+                      : currentWord.word,
+                    0.70
+                  )
+                }
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition"
+                title="Slow pronunciation for beginners (0.7x speed)"
+              >
+                🐢 Slow
               </button>
               <button
                 onClick={() => speakGerman(currentWord.exampleDe, 0.88)}
-                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition"
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition"
               >
                 <Volume2 className="w-4 h-4" /> Example
               </button>

@@ -22,8 +22,8 @@ export default function OnboardingModal() {
     plan.dailyTargetMinutes || 15
   );
   const [presetMode, setPresetMode] = useState<
-    "day6_austria" | "day1_fresh" | "day7_vienna" | "day12_routine"
-  >("day6_austria");
+    "day1_fresh" | "day6_austria" | "day7_vienna" | "day12_routine"
+  >("day1_fresh");
 
   if (!showOnboardingModal) return null;
 
@@ -172,16 +172,16 @@ export default function OnboardingModal() {
             <div className="space-y-2">
               {[
                 {
+                  id: "day1_fresh",
+                  title:
+                    "Day 1 of A1 — Complete Beginner (Recommended)",
+                  desc: "Start from scratch in Austria (Ich heiße..., Ich komme aus..., Ich spreche...). Zero previous knowledge required.",
+                },
+                {
                   id: "day6_austria",
                   title:
                     "Day 6 of A1 — Introduce Yourself at University (5/8 Done)",
                   desc: "Showcases 'My First Week in Austria', Dative 'mit meiner Freundin', & 'Why was I wrong?'",
-                },
-                {
-                  id: "day1_fresh",
-                  title:
-                    "Day 1 of A1 — Introduce Yourself to Another Student",
-                  desc: "Start Week 1 in Austria from Day 1 (Ich heiße..., Ich komme aus..., Ich spreche...)",
                 },
                 {
                   id: "day7_vienna",

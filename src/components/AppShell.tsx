@@ -15,9 +15,11 @@ import {
   Play,
   Smartphone,
   Monitor,
+  Sparkles,
 } from "lucide-react";
 import { useLearning } from "@/context/LearningContext";
 import TodayDashboard from "./TodayDashboard";
+import BasicsFoundationView from "./BasicsFoundationView";
 import MyLearningPathView from "./MyLearningPathView";
 import LearningCalendar from "./LearningCalendar";
 import SpeakHubView from "./SpeakHubView";
@@ -27,6 +29,7 @@ import OnboardingModal from "./OnboardingModal";
 
 export type ActiveTab =
   | "today"
+  | "basics"
   | "learn"
   | "speak"
   | "progress"
@@ -39,7 +42,7 @@ export default function AppShell({
 }: {
   initialTab?: ActiveTab;
 }) {
-  const normalizedInitial: "today" | "learn" | "speak" | "progress" | "profile" =
+  const normalizedInitial: "today" | "basics" | "learn" | "speak" | "progress" | "profile" =
     initialTab === "learning_path"
       ? "progress"
       : initialTab === "calendar"
@@ -47,8 +50,11 @@ export default function AppShell({
       : initialTab;
 
   const [activeTab, setActiveTab] = useState<
-    "today" | "learn" | "speak" | "progress" | "profile"
+    "today" | "basics" | "learn" | "speak" | "progress" | "profile"
   >(normalizedInitial);
+  const [basicsSection, setBasicsSection] = useState<
+    "alphabet" | "numbers" | "calendar" | "survival"
+  >("alphabet");
   const [mobilePreviewMode, setMobilePreviewMode] = useState<boolean>(false);
 
   const {
@@ -66,32 +72,47 @@ export default function AppShell({
       {/* Clean Frosted White Top Navigation Bar */}
       <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-slate-200/80 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-          {/* Brand Logo */}
-          <button
-            onClick={() => {
-              setActiveActivityId(null);
-              setActiveTab("today");
-            }}
-            className="flex items-center gap-2.5 text-left group"
-          >
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-white font-black text-lg shadow-md shadow-indigo-500/20 group-hover:scale-105 transition">
-              D
-            </div>
-            <div>
-              <div className="text-sm sm:text-base font-black tracking-tight text-slate-900 flex items-center gap-2">
-                DeutschNova
-                <span className="text-[11px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">
-                  {plan.level}
-                </span>
+          {/* Brand Logo & Mobile Quick Pill */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setActiveActivityId(null);
+                setActiveTab("today");
+              }}
+              className="flex items-center gap-2.5 text-left group"
+            >
+              <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-white font-black text-lg shadow-md shadow-indigo-500/20 group-hover:scale-105 transition">
+                D
               </div>
-              <div className="text-xs text-slate-500 hidden sm:block">
-                Real-Life German Coach
+              <div>
+                <div className="text-sm sm:text-base font-black tracking-tight text-slate-900 flex items-center gap-2">
+                  DeutschNova
+                  <span className="text-[11px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">
+                    {plan.level}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500 hidden sm:block">
+                  Real-Life German Coach
+                </div>
               </div>
-            </div>
-          </button>
+            </button>
 
-          {/* Desktop Navigation Pills */}
-          <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 border border-slate-200/80 p-1 rounded-2xl">
+            {/* Direct Mobile/Tablet Basics Quick Action Pill */}
+            <button
+              onClick={() => {
+                setActiveActivityId(null);
+                setActiveTab("basics");
+              }}
+              className="md:hidden flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black shadow-xs active:scale-95 transition"
+              title="Go to A0 Basics Foundations"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+              <span>Basics (A0)</span>
+            </button>
+          </div>
+
+          {/* Desktop & Medium Screen Navigation Pills */}
+          <nav className="hidden md:flex items-center gap-1 bg-slate-100/90 border border-slate-200/80 p-1 rounded-2xl">
             <button
               onClick={() => {
                 setActiveActivityId(null);
@@ -105,6 +126,20 @@ export default function AppShell({
             >
               <Compass className="w-3.5 h-3.5" />
               Today
+            </button>
+            <button
+              onClick={() => {
+                setActiveActivityId(null);
+                setActiveTab("basics");
+              }}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+                activeTab === "basics"
+                  ? "bg-white text-emerald-700 font-extrabold shadow-sm border border-slate-200/60"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              Basics (A0)
             </button>
             <button
               onClick={() => setActiveTab("learn")}
@@ -211,6 +246,22 @@ export default function AppShell({
             }}
             onOpenSpeakHub={() => {
               setActiveTab("speak");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            onOpenBasics={(sec) => {
+              if (sec) setBasicsSection(sec);
+              setActiveTab("basics");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
+        )}
+
+        {activeTab === "basics" && (
+          <BasicsFoundationView
+            initialTab={basicsSection}
+            onStartDay1={() => {
+              setActiveDayNumber(1);
+              setActiveTab("today");
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
           />
@@ -336,7 +387,7 @@ export default function AppShell({
           aria-label="Bottom Navigation"
           className="pointer-events-auto max-w-md mx-auto bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-3xl px-3 py-2 shadow-xl shadow-slate-900/10"
         >
-          <div className="grid grid-cols-5 items-center gap-1">
+          <div className="grid grid-cols-6 items-center gap-0.5">
             <button
               onClick={() => {
                 setActiveActivityId(null);
@@ -350,7 +401,26 @@ export default function AppShell({
               }`}
             >
               <Compass className="w-5 h-5" />
-              <span className="text-[11px] mt-0.5">Today</span>
+              <span className="text-[10px] mt-0.5">Today</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveActivityId(null);
+                setActiveTab("basics");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              className={`flex flex-col items-center justify-center py-1.5 rounded-2xl transition ${
+                activeTab === "basics"
+                  ? "text-emerald-700 bg-emerald-50 font-extrabold ring-1 ring-emerald-300"
+                  : "text-emerald-600 hover:text-emerald-700 font-bold"
+              }`}
+            >
+              <div className="relative">
+                <Sparkles className="w-5 h-5 text-emerald-600" />
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              </div>
+              <span className="text-[10px] mt-0.5">Basics</span>
             </button>
 
             <button
@@ -365,7 +435,7 @@ export default function AppShell({
               }`}
             >
               <BookOpen className="w-5 h-5" />
-              <span className="text-[11px] mt-0.5">Roadmap</span>
+              <span className="text-[10px] mt-0.5">Roadmap</span>
             </button>
 
             <button
@@ -376,7 +446,7 @@ export default function AppShell({
               className="flex flex-col items-center justify-center -mt-4"
             >
               <div
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transition transform active:scale-95 ${
+                className={`w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg transition transform active:scale-95 ${
                   activeTab === "speak"
                     ? "bg-indigo-700 text-white ring-4 ring-indigo-100"
                     : "bg-gradient-to-br from-indigo-600 to-violet-600 text-white"
@@ -385,7 +455,7 @@ export default function AppShell({
                 <Mic className="w-5 h-5" />
               </div>
               <span
-                className={`text-[11px] font-extrabold mt-1 ${
+                className={`text-[10px] font-extrabold mt-1 ${
                   activeTab === "speak" ? "text-indigo-700" : "text-slate-700"
                 }`}
               >
@@ -405,7 +475,7 @@ export default function AppShell({
               }`}
             >
               <BarChart3 className="w-5 h-5" />
-              <span className="text-[11px] mt-0.5">Progress</span>
+              <span className="text-[10px] mt-0.5">Progress</span>
             </button>
 
             <button
